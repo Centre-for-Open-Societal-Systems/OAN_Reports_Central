@@ -53,6 +53,16 @@ This machine may not have Docker/Postgres installed. For smoke tests the repo `.
 cd frontend; npm run dev
 ```
 
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [docs/README.md](docs/README.md) | Documentation index |
+| [docs/SPEC.md](docs/SPEC.md) | Product & functional specification |
+| [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) | Architecture & data design |
+| [docs/BACKEND.md](docs/BACKEND.md) | API runbook |
+| [docs/FRONTEND.md](docs/FRONTEND.md) | SPA structure & local run |
+
 ## API surface (summary)
 
 See [docs/BACKEND.md](docs/BACKEND.md).
