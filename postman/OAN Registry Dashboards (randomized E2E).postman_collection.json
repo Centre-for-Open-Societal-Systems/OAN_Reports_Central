@@ -1,0 +1,1156 @@
+{
+  "info": {
+    "_postman_id": "547c3049-dd8d-4c53-b2cd-d2dc14b020b3",
+    "name": "OAN Registry Dashboards (randomized E2E)",
+    "description": "End-to-end, randomized tests of the OAN registry dashboards (Farmer, Livestock, Crop Sown) through the public HTTPS gateway `GET {{baseUrl}}/api/charts?charts=<id>,...`.\n\n**Use this collection.** It replaces \"Registry Dashboard APIs (Farmer, Crop, Livestock)\", which calls the in-cluster `http://<service>.<namespace>` addresses that only resolve inside Kubernetes, and \"OAN Dashboards (dev)\", which is pinned to one host and one region.\n\n**Environments.** Pick one; nothing else is required:\n- *OAN Dashboards - New Dev*: `https://oan-dashboard-development.oanstaging.com`\n- *OAN Dashboards - Staging*: `https://oan-dashboard.oanstaging.com`\n\n**What a run does.**\n1. *Setup* reads health, config, the filter options and the map units, then fetches every chart unfiltered (the baseline).\n2. The baseline picks a random geography: a region, a zone in it, a woreda in that and, when one has data, a kebele. It also picks a farming type and a record state.\n3. *Geography scopes* filter every chart to each picked level. *Attribute filters* filter by the picked farming type and record state. *Negative* covers an unknown chart, an unknown region, a hostile filter value and the default chart set.\n\nRun more iterations (`-n 10` in the CLI, or Iterations in the Runner) to cover more units. Each iteration picks again.\n\n**What is asserted.** Expected numbers are never hardcoded; they come from the same run's baseline:\n- **Envelope.** Every requested chart succeeds and has the documented fields.\n- **Code levels.** Region codes are ET+2 digits, zones +2 more, woredas +2 more.\n- **Cross-chart totals.** Within each response, totals agree across charts. For example, `farmerKpis.total_farmers` equals the sum of every farmer breakdown, and `livestockKpis.animals` equals the sum of every livestock breakdown.\n- **Scope.** Each scoped KPI equals the baseline row for that unit (0 if the unit has none), and no row falls outside the scope.\n\n**Variables** (environment or `--env-var`). All are optional; leave them empty for random:\n- `seed`: replays a run. The seed is printed in the \"picked ...\" test of every iteration.\n- `pick`:\n  - `populated`: only units that have data.\n  - `all`: any unit on the map.\n  - `mixed`: the default.\n- `region`, `zone`, `woreda`, `kebele`: pin a level. Levels below a pinned one are still picked at random.\n- `farmingType`, `recordState`: pin an attribute filter.\n- `charts` (collection variable): narrow the chart list while debugging.\n\n**CLI:** `postman collection run oan-registry-dashboards.postman_collection.json -e new-dev.postman_environment.json -n 10`\n\nThe source is `docs/registries/dashboard-postman/` in the Protean workspace repo; rebuild with `build.py`.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "57831899",
+    "_collection_link": "https://go.postman.co/collection/49316197-547c3049-dd8d-4c53-b2cd-d2dc14b020b3?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "0 Setup",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'health');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            },
+            "description": "Gateway liveness."
+          },
+          "response": []
+        },
+        {
+          "name": "Config",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'config');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "config"
+              ]
+            },
+            "description": "Registry views the gateway offers."
+          },
+          "response": []
+        },
+        {
+          "name": "Filter options",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'filterOptions');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/filter-options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "filter-options"
+              ]
+            },
+            "description": "Regions and record states offered to the UI; stored for the picker."
+          },
+          "response": []
+        },
+        {
+          "name": "Map units",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'mapUnits');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/maps/units",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "maps",
+                "units"
+              ]
+            },
+            "description": "Every woreda with its zone and region; the 'all' picker draws from it."
+          },
+          "response": []
+        },
+        {
+          "name": "Baseline, all charts, no filter",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'baseline');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                }
+              ]
+            },
+            "description": "All charts unfiltered. Checks fields, code levels and cross-chart totals, stores the rows as the expected values for the scoped calls, then picks this iteration's random geography and attributes."
+          },
+          "response": []
+        }
+      ],
+      "description": "Liveness, configuration, the geography the picker draws from, and the unfiltered baseline every later expectation is computed from."
+    },
+    {
+      "name": "1 Geography scopes",
+      "item": [
+        {
+          "name": "Region scope",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'scope');",
+                  "pm.variables.set('_level', 'region');",
+                  "if (!pm.collectionVariables.get('_region')) {",
+                  "  console.log('skipped: no region picked for this iteration');",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}&region={{_region}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                },
+                {
+                  "key": "region",
+                  "value": "{{_region}}"
+                }
+              ]
+            },
+            "description": "Filtered to the picked region."
+          },
+          "response": []
+        },
+        {
+          "name": "Zone scope",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'scope');",
+                  "pm.variables.set('_level', 'zone');",
+                  "if (!pm.collectionVariables.get('_zone')) {",
+                  "  console.log('skipped: no zone picked for this iteration');",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}&region={{_region}}&zone={{_zone}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                },
+                {
+                  "key": "region",
+                  "value": "{{_region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{_zone}}"
+                }
+              ]
+            },
+            "description": "Filtered to the picked zone inside the region."
+          },
+          "response": []
+        },
+        {
+          "name": "Woreda scope",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'scope');",
+                  "pm.variables.set('_level', 'woreda');",
+                  "if (!pm.collectionVariables.get('_woreda')) {",
+                  "  console.log('skipped: no woreda picked for this iteration');",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}&region={{_region}}&zone={{_zone}}&woreda={{_woreda}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                },
+                {
+                  "key": "region",
+                  "value": "{{_region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{_zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{_woreda}}"
+                }
+              ]
+            },
+            "description": "Filtered to the picked woreda."
+          },
+          "response": []
+        },
+        {
+          "name": "Kebele scope",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'scope');",
+                  "pm.variables.set('_level', 'kebele');",
+                  "if (!pm.collectionVariables.get('_kebele')) {",
+                  "  console.log('skipped: no kebele picked for this iteration');",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}&region={{_region}}&zone={{_zone}}&woreda={{_woreda}}&kebele={{_kebele}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                },
+                {
+                  "key": "region",
+                  "value": "{{_region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{_zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{_woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{_kebele}}"
+                }
+              ]
+            },
+            "description": "Filtered to a kebele with data in the picked woreda (skipped when there is none)."
+          },
+          "response": []
+        }
+      ],
+      "description": "The same charts filtered to the picked region, then zone, woreda and kebele. Every scoped total must equal the baseline row for that unit, and every geography row must lie inside the scope."
+    },
+    {
+      "name": "2 Attribute filters",
+      "item": [
+        {
+          "name": "Farming type",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'attr');",
+                  "if (!pm.collectionVariables.get('_farmingType')) {",
+                  "  console.log('skipped: no farmingType picked for this iteration');",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}&farmingType={{_farmingType}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{_farmingType}}"
+                }
+              ]
+            },
+            "description": "Filtered to the picked farming type."
+          },
+          "response": []
+        },
+        {
+          "name": "Record state",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'attr');",
+                  "if (!pm.collectionVariables.get('_recordState')) {",
+                  "  console.log('skipped: no recordState picked for this iteration');",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}&recordState={{_recordState}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{_recordState}}"
+                }
+              ]
+            },
+            "description": "Filtered to the picked record state."
+          },
+          "response": []
+        },
+        {
+          "name": "Region + farming type + record state",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'combined');",
+                  "if (!pm.collectionVariables.get('_region')) {",
+                  "  console.log('skipped: no region picked for this iteration');",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}&region={{_region}}&farmingType={{_farmingType}}&recordState={{_recordState}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                },
+                {
+                  "key": "region",
+                  "value": "{{_region}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{_farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{_recordState}}"
+                }
+              ]
+            },
+            "description": "All filters together; totals may not exceed any single-filter total."
+          },
+          "response": []
+        }
+      ],
+      "description": "Random farming type and record state, alone and combined with the picked region."
+    },
+    {
+      "name": "3 Negative",
+      "item": [
+        {
+          "name": "Unknown chart",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'unknownChart');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=notAChart,farmerKpis",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "notAChart,farmerKpis"
+                }
+              ]
+            },
+            "description": "A chart no service serves must fail alone, with 'not found'."
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown region",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'emptyScope');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}&region=ET99",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                },
+                {
+                  "key": "region",
+                  "value": "ET99"
+                }
+              ]
+            },
+            "description": "A well-formed region with no units must return empty or zero rows, not errors."
+          },
+          "response": []
+        },
+        {
+          "name": "Hostile region value",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'emptyScope');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts={{charts}}&region=ET04' OR '1'='1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "{{charts}}"
+                },
+                {
+                  "key": "region",
+                  "value": "ET04' OR '1'='1"
+                }
+              ]
+            },
+            "description": "A quote-laden filter value must not error or leak rows."
+          },
+          "response": []
+        },
+        {
+          "name": "Default chart set",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('_check', 'defaultSet');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ]
+            },
+            "description": "No charts parameter: every chart the gateway serves by default must succeed."
+          },
+          "response": []
+        }
+      ],
+      "description": "Contract at the edges: unknown chart, unknown region, hostile filter value, default chart set."
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Send only the filters that resolve to a value: an unset filter must be absent, not \"region=\".",
+          "const kept = pm.request.url.query.filter(p => !p.disabled && pm.variables.replaceIn(String(p.value == null ? '' : p.value)) !== '');",
+          "pm.request.url.query.clear();",
+          "kept.forEach(p => pm.request.url.query.add({ key: p.key, value: p.value }));"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// One test script for the whole collection. Each request sets _check (and _level) in its",
+          "// pre-request script; this script dispatches on it. Expectations come from the unfiltered",
+          "// baseline of the same run, never from hardcoded numbers, so the suite works on any environment.",
+          "",
+          "const CHECK = pm.variables.get('_check') || '';",
+          "const LEVEL = pm.variables.get('_level') || '';",
+          "const cv = pm.collectionVariables;",
+          "",
+          "const FIELDS = {",
+          "  farmerKpis: ['total_farmers', 'female_farmers', 'male_farmers', 'total_land_size', 'avg_farm_size', 'farmers_with_owned_land', 'household_heads', 'farmers_with_id', 'farmers_without_id'],",
+          "  farmersByRegion: ['region', 'region_code', 'farmers'], farmersByZone: ['zone', 'zone_code', 'farmers'],",
+          "  farmersByWoreda: ['woreda', 'woreda_code', 'farmers'], farmersByKebele: ['kebele', 'kebele_code', 'farmers'],",
+          "  farmersByGender: ['gender', 'farmers'], farmersByType: ['farming_type', 'farmers'],",
+          "  farmersByAgeAndGender: ['age_group', 'gender', 'farmers'], farmersByEducation: ['education', 'farmers'],",
+          "  farmersByRecordState: ['record_state', 'farmers'], farmersByFarmerId: ['id_status', 'farmers'],",
+          "  landTenureSplit: ['ownership_type', 'parcels', 'area'], registryTrendByMonth: ['period', 'farmers', 'total_area', 'owned_area'],",
+          "  registryCoverage: ['regions_covered', 'zones_covered', 'woredas_covered', 'kebeles_covered'],",
+          "  livestockKpis: ['holdings', 'keepers', 'female_keepers', 'woredas_reporting', 'animals', 'species_tracked', 'breeds_tracked'],",
+          "  livestockBySpecies: ['species', 'species_code', 'animals', 'keepers'], livestockByBreed: ['breed', 'breed_code', 'species', 'animals'],",
+          "  livestockKeepersByRegion: ['region', 'region_code', 'farmers', 'animals'], livestockKeepersByZone: ['zone', 'zone_code', 'farmers', 'animals'],",
+          "  livestockKeepersByWoreda: ['woreda', 'woreda_code', 'farmers', 'animals'], livestockKeepersByKebele: ['kebele', 'kebele_code', 'farmers', 'animals'],",
+          "  livestockTopWoredas: ['woreda', 'woreda_code', 'farmers', 'animals'], herdHealthSplit: ['health_status', 'animals'],",
+          "  livestockVaccinationStatus: ['vaccination_status', 'animals'], livestockBySex: ['sex', 'animals'],",
+          "  livestockTrendByMonth: ['period', 'farmers', 'holdings', 'animals'], livestockByState: ['state', 'holdings'],",
+          "  livestockByRecordState: ['record_state', 'holdings'],",
+          "  cropKpis: ['total_area', 'owned_area', 'farmers', 'registrations', 'crop_types', 'woredas_reporting', 'avg_plot_size'],",
+          "  cropAreaByCrop: ['crop', 'crop_code', 'area', 'farmers'],",
+          "  // The crop geography charts return the AREA under \"farmers\" and the head count under \"farmer_count\".",
+          "  cropAreaByRegion: ['region', 'region_code', 'farmers', 'farmer_count'], cropAreaByZone: ['zone', 'zone_code', 'farmers', 'farmer_count'],",
+          "  cropAreaByWoreda: ['woreda', 'woreda_code', 'farmers', 'farmer_count'], cropAreaByKebele: ['kebele', 'kebele_code', 'farmers', 'farmer_count'],",
+          "  cropTopWoredas: ['woreda', 'woreda_code', 'area', 'farmers'], cropLandTenureSplit: ['ownership_type', 'ownership_type_code', 'parcels', 'area'],",
+          "  cropBySeason: ['season', 'season_code', 'area', 'farmers'], cropTrendByMonth: ['period', 'farmers', 'total_area', 'owned_area'],",
+          "  cropByStatus: ['status', 'registrations'], cropByLifecycleStage: ['lifecycle_stage', 'registrations'], cropByRecordState: ['record_state', 'registrations'],",
+          "};",
+          "// Per level, the chart of each registry that has one row per unit, and what its row means.",
+          "const GEO = {",
+          "  region: { farmer: 'farmersByRegion', livestock: 'livestockKeepersByRegion', crop: 'cropAreaByRegion' },",
+          "  zone: { farmer: 'farmersByZone', livestock: 'livestockKeepersByZone', crop: 'cropAreaByZone' },",
+          "  woreda: { farmer: 'farmersByWoreda', livestock: 'livestockKeepersByWoreda', crop: 'cropAreaByWoreda' },",
+          "  kebele: { farmer: 'farmersByKebele', livestock: 'livestockKeepersByKebele', crop: 'cropAreaByKebele' },",
+          "};",
+          "const CODE_RE = { region_code: /^ET\\d{2}$/, zone_code: /^ET\\d{4}$/, woreda_code: /^ET\\d{6}$/, kebele_code: /^ET\\d{8}(\\d{4})?$/ };",
+          "",
+          "const num = v => Number(v || 0);",
+          "const close = (a, b) => Math.abs(num(a) - num(b)) < 0.01;",
+          "const sum = (rows, f) => rows.reduce((t, r) => t + num(r[f]), 0);",
+          "const json = s => { try { return JSON.parse(s); } catch (e) { return null; } };",
+          "",
+          "let body = null;",
+          "try { body = pm.response.json(); } catch (e) { /* asserted below */ }",
+          "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+          "pm.test('JSON body', () => pm.expect(body !== null && typeof body === 'object', pm.response.text().slice(0, 200)).to.be.true);",
+          "if (!body || typeof body !== 'object') return;",
+          "",
+          "// ---------- chart response helpers ----------",
+          "const chart = id => (body.data && body.data[id]) || null;",
+          "const ok = id => !!(chart(id) && chart(id).success && Array.isArray(chart(id).data));",
+          "const rows = id => (ok(id) ? chart(id).data : []);",
+          "const kpi = id => rows(id)[0];",
+          "const requested = () => (pm.request.url.query.get('charts') || '').split(',').filter(Boolean);",
+          "const codeKey = row => Object.keys(CODE_RE).find(k => k in row);",
+          "",
+          "function envelope() {",
+          "  pm.test('envelope: data object and summary', () => {",
+          "    pm.expect(body.success, 'success').to.equal(true);",
+          "    pm.expect(body.data).to.be.an('object');",
+          "    pm.expect(body.summary).to.be.an('object');",
+          "  });",
+          "}",
+          "",
+          "function noFailedCharts(ids) {",
+          "  const failed = ids.filter(id => !ok(id)).map(id => `${id}: ${chart(id) ? (chart(id).error || 'success=false') : 'missing'}`);",
+          "  pm.test(`no chart failed (${ids.length} requested)`, () => pm.expect(failed, failed.join(' | ')).to.eql([]));",
+          "}",
+          "",
+          "function shapes(ids) {",
+          "  ids.forEach(id => {",
+          "    const data = rows(id);",
+          "    if (!data.length || !FIELDS[id]) return;",
+          "    pm.test(`${id}: fields`, () => pm.expect(data[0]).to.include.all.keys(...FIELDS[id]));",
+          "    const key = codeKey(data[0]);",
+          "    if (!key) return;",
+          "    const odd = data.map(r => r[key]).filter(c => c !== 'Unknown' && !CODE_RE[key].test(String(c)));",
+          "    if (odd.length) console.warn(`${id}: ${key} off-level`, odd);",
+          "    // Special units outside the usual chain are tolerated; a level shift makes most codes odd.",
+          "    pm.test(`${id}: ${key} at its level`, () => pm.expect(odd.length, `off-level: ${odd.slice(0, 5)}`).to.be.below(Math.max(1, data.length / 2)));",
+          "  });",
+          "}",
+          "",
+          "// Totals that must agree inside any single response, filtered or not.",
+          "function invariants() {",
+          "  const eq = (name, a, b) => pm.test(`consistent: ${name}`, () => pm.expect(num(a), `${a} vs ${b}`).to.be.closeTo(num(b), 0.01));",
+          "  const le = (name, a, b) => pm.test(`consistent: ${name}`, () => pm.expect(num(a), `${a} vs ${b}`).to.be.at.most(num(b) + 0.01));",
+          "",
+          "  const f = kpi('farmerKpis');",
+          "  if (f) {",
+          "    ['farmersByRegion', 'farmersByZone', 'farmersByWoreda', 'farmersByKebele', 'farmersByGender', 'farmersByType',",
+          "      'farmersByAgeAndGender', 'farmersByEducation', 'farmersByRecordState', 'farmersByFarmerId']",
+          "      .filter(ok).forEach(id => eq(`farmerKpis.total_farmers = sum(${id}.farmers)`, f.total_farmers, sum(rows(id), 'farmers')));",
+          "    if (ok('farmersByGender')) {",
+          "      const g = v => sum(rows('farmersByGender').filter(r => String(r.gender).toUpperCase() === v), 'farmers');",
+          "      eq('farmerKpis.female_farmers = farmersByGender FEMALE', f.female_farmers, g('FEMALE'));",
+          "      eq('farmerKpis.male_farmers = farmersByGender MALE', f.male_farmers, g('MALE'));",
+          "    }",
+          "    if (ok('landTenureSplit')) eq('farmerKpis.total_land_size = sum(landTenureSplit.area)', f.total_land_size, sum(rows('landTenureSplit'), 'area'));",
+          "    if (ok('registryTrendByMonth')) le('sum(registryTrendByMonth.farmers) <= total_farmers', sum(rows('registryTrendByMonth'), 'farmers'), f.total_farmers);",
+          "    le('farmers_with_id <= total_farmers', f.farmers_with_id, f.total_farmers);",
+          "  }",
+          "",
+          "  const l = kpi('livestockKpis');",
+          "  if (l) {",
+          "    ['livestockBySpecies', 'livestockByBreed', 'livestockKeepersByRegion', 'livestockKeepersByZone', 'livestockKeepersByWoreda',",
+          "      'livestockKeepersByKebele', 'herdHealthSplit', 'livestockVaccinationStatus', 'livestockBySex', 'livestockTrendByMonth']",
+          "      .filter(ok).forEach(id => eq(`livestockKpis.animals = sum(${id}.animals)`, l.animals, sum(rows(id), 'animals')));",
+          "    ['livestockByState', 'livestockByRecordState', 'livestockTrendByMonth']",
+          "      .filter(ok).forEach(id => eq(`livestockKpis.holdings = sum(${id}.holdings)`, l.holdings, sum(rows(id), 'holdings')));",
+          "    // A keeper can hold animals in several units, so per-unit keeper counts may add up to more.",
+          "    ['livestockKeepersByRegion', 'livestockKeepersByWoreda']",
+          "      .filter(ok).forEach(id => le(`livestockKpis.keepers <= sum(${id}.farmers)`, l.keepers, sum(rows(id), 'farmers')));",
+          "    if (ok('livestockBySpecies')) eq('species_tracked = livestockBySpecies rows', l.species_tracked, rows('livestockBySpecies').length);",
+          "    if (ok('livestockByBreed')) eq('breeds_tracked = livestockByBreed rows', l.breeds_tracked, rows('livestockByBreed').length);",
+          "    le('female_keepers <= keepers', l.female_keepers, l.keepers);",
+          "  }",
+          "",
+          "  const c = kpi('cropKpis');",
+          "  if (c) {",
+          "    if (ok('cropLandTenureSplit')) eq('cropKpis.total_area = sum(cropLandTenureSplit.area)', c.total_area, sum(rows('cropLandTenureSplit'), 'area'));",
+          "    if (ok('cropBySeason')) eq('cropKpis.total_area = sum(cropBySeason.area)', c.total_area, sum(rows('cropBySeason'), 'area'));",
+          "    ['cropAreaByRegion', 'cropAreaByZone', 'cropAreaByWoreda', 'cropAreaByKebele'].filter(ok).forEach(id => {",
+          "      eq(`cropKpis.total_area = sum(${id}.farmers [area])`, c.total_area, sum(rows(id), 'farmers'));",
+          "      eq(`cropKpis.farmers = sum(${id}.farmer_count)`, c.farmers, sum(rows(id), 'farmer_count'));",
+          "    });",
+          "    if (ok('cropAreaByCrop')) {",
+          "      const byCrop = sum(rows('cropAreaByCrop'), 'area');",
+          "      if (!close(byCrop, c.total_area)) console.warn(`cropAreaByCrop covers ${byCrop} of ${c.total_area} ha: plots without a crop are dropped`);",
+          "      le('sum(cropAreaByCrop.area) <= cropKpis.total_area', byCrop, c.total_area);",
+          "      eq('cropKpis.crop_types = cropAreaByCrop rows', c.crop_types, rows('cropAreaByCrop').length);",
+          "    }",
+          "    le('owned_area <= total_area', c.owned_area, c.total_area);",
+          "    const st = ['cropByStatus', 'cropByLifecycleStage', 'cropByRecordState'].filter(ok);",
+          "    st.slice(1).forEach(id => eq(`sum(${st[0]}.registrations) = sum(${id}.registrations)`, sum(rows(st[0]), 'registrations'), sum(rows(id), 'registrations')));",
+          "  }",
+          "}",
+          "",
+          "// ---------- seeded picker ----------",
+          "function rng(seed) {",
+          "  let a = seed >>> 0;",
+          "  return () => {",
+          "    a = (a + 0x6D2B79F5) >>> 0;",
+          "    let t = a;",
+          "    t = Math.imul(t ^ (t >>> 15), t | 1);",
+          "    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);",
+          "    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;",
+          "  };",
+          "}",
+          "",
+          "function pickGeography(baseline) {",
+          "  const pinnedSeed = pm.variables.get('seed');",
+          "  const runSeed = pinnedSeed !== undefined && pinnedSeed !== '' ? Number(pinnedSeed) : (cv.get('_runSeed') ? Number(cv.get('_runSeed')) : Math.floor(Math.random() * 1e9));",
+          "  cv.set('_runSeed', String(runSeed));",
+          "  const rand = rng(runSeed + 7919 * pm.info.iteration);",
+          "  const choose = list => list[Math.floor(rand() * list.length)];",
+          "",
+          "  const pin = { region: pm.variables.get('region') || '', zone: pm.variables.get('zone') || '', woreda: pm.variables.get('woreda') || '', kebele: pm.variables.get('kebele') || '' };",
+          "  const pinned = Object.values(pin).filter(Boolean).sort((a, b) => b.length - a.length)[0] || '';",
+          "  const units = json(cv.get('_units')) || [];",
+          "  const codesFrom = (ids, re) => [...new Set(ids.flatMap(id => (baseline[id] || []).map(r => String(r[codeKey(r) || ''] || ''))).filter(c => re.test(c)))];",
+          "  const populatedWoredas = codesFrom(Object.values(GEO.woreda), CODE_RE.woreda_code);",
+          "",
+          "  let mode = pm.variables.get('pick') || 'mixed';",
+          "  if (mode === 'mixed') mode = rand() < 0.5 ? 'populated' : 'all';",
+          "  let pool = mode === 'populated' ? populatedWoredas : units.map(u => u.woreda).filter(w => CODE_RE.woreda_code.test(w));",
+          "  pool = pool.filter(w => w.startsWith(pinned) || pinned.startsWith(w));",
+          "  if (!pool.length && mode === 'populated') { mode = 'all (no populated woreda in the pin)'; pool = units.map(u => u.woreda).filter(w => w.startsWith(pinned)); }",
+          "",
+          "  let w = pin.woreda || (pool.length ? choose(pool) : '');",
+          "  const region = pin.region || (w ? w.slice(0, 4) : pinned.slice(0, 4));",
+          "  const zone = pin.zone || (w ? w.slice(0, 6) : '');",
+          "  const kebeles = codesFrom(Object.values(GEO.kebele), CODE_RE.kebele_code).filter(k => w && k.startsWith(w));",
+          "  const kebele = pin.kebele || (kebeles.length ? choose(kebeles) : '');",
+          "",
+          "  const types = (baseline.farmersByType || []).map(r => r.farming_type).filter(t => t && t !== 'Unknown');",
+          "  const states = [...new Set((baseline.farmersByRecordState || []).concat(baseline.livestockByRecordState || [], baseline.cropByRecordState || []).map(r => r.record_state).filter(Boolean))];",
+          "  const farmingType = pm.variables.get('farmingType') || (types.length ? choose(types) : '');",
+          "  const recordState = pm.variables.get('recordState') || (states.length ? choose(states) : '');",
+          "",
+          "  const pick = { _region: region, _zone: zone, _woreda: w, _kebele: kebele, _farmingType: farmingType, _recordState: recordState };",
+          "  Object.entries(pick).forEach(([k, v]) => cv.set(k, v));",
+          "  const label = `seed ${runSeed} iteration ${pm.info.iteration} (${mode}): ${region || '-'} / ${zone || '-'} / ${w || '-'} / ${kebele || '-'}, farmingType ${farmingType || '-'}, recordState ${recordState || '-'}`;",
+          "  console.log('picked ' + label);",
+          "  pm.test(`picked ${label}`, () => pm.expect(region, 'no region could be picked').to.match(CODE_RE.region_code));",
+          "}",
+          "",
+          "// ---------- checks ----------",
+          "const CHECKS = {",
+          "  health() { pm.test('status ok', () => pm.expect(body.status).to.eql('ok')); },",
+          "",
+          "  config() {",
+          "    pm.test('registries offered', () => pm.expect(body.dashboards).to.include('registries'));",
+          "    pm.test('crop and livestock views on', () => pm.expect(body.registryViews).to.deep.include({ crop: true, livestock: true }));",
+          "  },",
+          "",
+          "  filterOptions() {",
+          "    pm.test('regions are P-codes', () => {",
+          "      pm.expect(body.regions).to.be.an('array').that.is.not.empty;",
+          "      body.regions.forEach(r => pm.expect(r.code).to.match(CODE_RE.region_code));",
+          "    });",
+          "    cv.set('_regions', JSON.stringify((body.regions || []).map(r => r.code)));",
+          "  },",
+          "",
+          "  mapUnits() {",
+          "    pm.test('units chain woreda -> zone -> region', () => {",
+          "      pm.expect(body).to.be.an('array').that.is.not.empty;",
+          "      const bad = body.filter(u => !(CODE_RE.region_code.test(u.region) && u.zone.startsWith(u.region) && u.woreda.startsWith(u.zone)));",
+          "      pm.expect(bad.length, JSON.stringify(bad.slice(0, 3))).to.be.below(Math.max(1, body.length / 100));",
+          "    });",
+          "    const regions = json(cv.get('_regions')) || [];",
+          "    const unknown = [...new Set(body.map(u => u.region))].filter(r => regions.length && !regions.includes(r));",
+          "    pm.test('every unit region is a filter option', () => pm.expect(unknown).to.eql([]));",
+          "    cv.set('_units', JSON.stringify(body.map(u => ({ region: u.region, zone: u.zone, woreda: u.woreda }))));",
+          "  },",
+          "",
+          "  baseline() {",
+          "    const ids = requested();",
+          "    envelope(); noFailedCharts(ids); shapes(ids); invariants();",
+          "    const baseline = {};",
+          "    ids.forEach(id => { baseline[id] = rows(id); });",
+          "    cv.set('_baseline', JSON.stringify(baseline));",
+          "    ['_region', '_zone', '_woreda', '_kebele', '_farmingType', '_recordState'].forEach(k => cv.unset(k));",
+          "    pickGeography(baseline);",
+          "  },",
+          "",
+          "  scope() {",
+          "    const code = cv.get('_' + LEVEL);",
+          "    const baseline = json(cv.get('_baseline')) || {};",
+          "    const ids = requested();",
+          "    envelope(); noFailedCharts(ids); shapes(ids); invariants();",
+          "    pm.test(`filters echo ${LEVEL} ${code}`, () => pm.expect((body.filters || {})[LEVEL]).to.eql(code));",
+          "",
+          "    // Every geography row must lie inside the scope (or be an ancestor of it); Unknown cannot match a filter.",
+          "    const outside = [];",
+          "    ids.filter(ok).forEach(id => rows(id).forEach(r => {",
+          "      const key = codeKey(r);",
+          "      if (!key) return;",
+          "      const c = String(r[key]);",
+          "      if (!(c.startsWith(code) || code.startsWith(c)) || c === 'Unknown') outside.push(`${id}:${c}`);",
+          "    }));",
+          "    pm.test(`all geography rows inside ${code}`, () => pm.expect(outside, outside.slice(0, 8).join(' ')).to.eql([]));",
+          "",
+          "    // Scoped totals equal the baseline row for the unit (0 when the unit has no row).",
+          "    const unitRow = id => (baseline[id] || []).find(r => r[codeKey(r) || ''] === code) || {};",
+          "    const expectEq = (label, actual, expected) => pm.test(`${label} = baseline ${code}`, () => {",
+          "      pm.expect(actual, `${label} missing (chart failed)`).to.not.be.undefined;",
+          "      pm.expect(num(actual), `${actual} vs ${expected}`).to.be.closeTo(num(expected), 0.01);",
+          "    });",
+          "    const g = GEO[LEVEL];",
+          "    expectEq('farmerKpis.total_farmers', (kpi('farmerKpis') || {}).total_farmers, unitRow(g.farmer).farmers);",
+          "    expectEq('livestockKpis.animals', (kpi('livestockKpis') || {}).animals, unitRow(g.livestock).animals);",
+          "    expectEq('livestockKpis.keepers', (kpi('livestockKpis') || {}).keepers, unitRow(g.livestock).farmers);",
+          "    expectEq('cropKpis.farmers', (kpi('cropKpis') || {}).farmers, unitRow(g.crop).farmer_count);",
+          "    expectEq('cropKpis.total_area', (kpi('cropKpis') || {}).total_area, unitRow(g.crop).farmers);",
+          "  },",
+          "",
+          "  attr() {",
+          "    const baseline = json(cv.get('_baseline')) || {};",
+          "    const ids = requested();",
+          "    envelope(); noFailedCharts(ids); shapes(ids); invariants();",
+          "    const q = k => pm.variables.replaceIn(pm.request.url.query.get(k) || '');",
+          "    const ft = q('farmingType'), rs = q('recordState');",
+          "    if (ft) {",
+          "      const expected = sum((baseline.farmersByType || []).filter(r => r.farming_type === ft), 'farmers');",
+          "      pm.test(`farmerKpis.total_farmers = baseline farmersByType ${ft}`, () => pm.expect(num((kpi('farmerKpis') || {}).total_farmers), 'farmerKpis').to.equal(expected));",
+          "      pm.test(`farmersByType has only ${ft}`, () => pm.expect(rows('farmersByType').map(r => r.farming_type).filter(t => t !== ft)).to.eql([]));",
+          "    }",
+          "    if (rs) {",
+          "      [['farmersByRecordState', 'farmers'], ['livestockByRecordState', 'holdings'], ['cropByRecordState', 'registrations']].forEach(([id, f]) => {",
+          "        const expected = sum((baseline[id] || []).filter(r => r.record_state === rs), f);",
+          "        pm.test(`${id} = baseline ${rs} (${expected})`, () => {",
+          "          pm.expect(ok(id), `${id} failed`).to.be.true;",
+          "          pm.expect(rows(id).map(r => r.record_state).filter(s => s !== rs), 'other states').to.eql([]);",
+          "          pm.expect(sum(rows(id), f)).to.equal(expected);",
+          "        });",
+          "      });",
+          "    }",
+          "  },",
+          "",
+          "  combined() {",
+          "    const baseline = json(cv.get('_baseline')) || {};",
+          "    const ids = requested();",
+          "    envelope(); noFailedCharts(ids); shapes(ids); invariants();",
+          "    const region = cv.get('_region');",
+          "    const regionTotal = num(((baseline.farmersByRegion || []).find(r => r.region_code === region) || {}).farmers);",
+          "    const total = (kpi('farmerKpis') || {}).total_farmers;",
+          "    pm.test(`farmers with all filters <= farmers in ${region} (${regionTotal})`, () => {",
+          "      pm.expect(total, 'farmerKpis failed').to.not.be.undefined;",
+          "      pm.expect(num(total)).to.be.at.most(regionTotal);",
+          "    });",
+          "  },",
+          "",
+          "  unknownChart() {",
+          "    envelope();",
+          "    pm.test('notAChart fails with not found', () => {",
+          "      pm.expect(chart('notAChart').success).to.equal(false);",
+          "      pm.expect(chart('notAChart').error).to.match(/not found/i);",
+          "    });",
+          "    pm.test('a bad chart id does not fail its neighbours', () => pm.expect(ok('farmerKpis'), chart('farmerKpis') && chart('farmerKpis').error).to.be.true);",
+          "  },",
+          "",
+          "  emptyScope() {",
+          "    const ids = requested();",
+          "    envelope();",
+          "    const leaked = ids.filter(id => (chart(id) && chart(id).data || []).some(r => Object.values(r).some(v => typeof v === 'number' && v > 0)));",
+          "    pm.test('no chart returns data outside any unit', () => pm.expect(leaked).to.eql([]));",
+          "    noFailedCharts(ids);",
+          "  },",
+          "",
+          "  defaultSet() {",
+          "    const ids = Object.keys(body.data || {});",
+          "    envelope(); noFailedCharts(ids); shapes(ids);",
+          "  },",
+          "};",
+          "",
+          "if (CHECKS[CHECK]) CHECKS[CHECK]();",
+          "else pm.test(`known check \"${CHECK}\"`, () => pm.expect.fail(`no check named \"${CHECK}\"`));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "seed",
+      "value": "",
+      "description": "Integer. Empty = new random seed per run; set it to replay a run (the seed is printed in the Pick test)."
+    },
+    {
+      "key": "pick",
+      "value": "mixed",
+      "description": "populated = only units with registry data, all = any unit of the map, mixed = 50/50 per iteration."
+    },
+    {
+      "key": "region",
+      "value": "",
+      "description": "Pin a region P-code (ET04). Lower levels are still picked inside it."
+    },
+    {
+      "key": "zone",
+      "value": "",
+      "description": "Pin a zone P-code (ET0401)."
+    },
+    {
+      "key": "woreda",
+      "value": "",
+      "description": "Pin a woreda P-code (ET040101)."
+    },
+    {
+      "key": "kebele",
+      "value": "",
+      "description": "Pin a kebele code."
+    },
+    {
+      "key": "farmingType",
+      "value": "",
+      "description": "Pin a farming type (MIXED); empty = random from farmersByType."
+    },
+    {
+      "key": "recordState",
+      "value": "",
+      "description": "Pin a record state (ACTIVE); empty = random from the baseline."
+    },
+    {
+      "key": "charts",
+      "value": "farmerKpis,farmersByRegion,farmersByZone,farmersByWoreda,farmersByKebele,farmersByGender,farmersByType,farmersByAgeAndGender,farmersByEducation,farmersByRecordState,farmersByFarmerId,landTenureSplit,registryTrendByMonth,registryCoverage,livestockKpis,livestockBySpecies,livestockByBreed,livestockKeepersByRegion,livestockKeepersByZone,livestockKeepersByWoreda,livestockKeepersByKebele,livestockTopWoredas,herdHealthSplit,livestockVaccinationStatus,livestockBySex,livestockTrendByMonth,livestockByState,livestockByRecordState,cropKpis,cropAreaByCrop,cropAreaByRegion,cropAreaByZone,cropAreaByWoreda,cropAreaByKebele,cropTopWoredas,cropLandTenureSplit,cropBySeason,cropTrendByMonth,cropByStatus,cropByLifecycleStage,cropByRecordState",
+      "description": "Charts requested by every chart call; narrow it to debug one chart."
+    }
+  ]
+}

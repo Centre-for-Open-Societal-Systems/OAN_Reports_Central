@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: oan
+      POSTGRES_PASSWORD: oan
+      POSTGRES_DB: oan_reports
+    ports:
+      - "5432:5432"
+    volumes:
+      - oan_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oan -d oan_reports"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://oan:oan@db:5432/oan_reports
+      SEED_ON_STARTUP: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Optional: serve the built SPA via nginx later; for now run Vite on the host.
+
+volumes:
+  oan_pgdata:

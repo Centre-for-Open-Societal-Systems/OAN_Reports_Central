@@ -1,0 +1,15 @@
+[project]
+name = "oan_reports_central"
+authors = [
+    { name = "Centre for Open Societal Systems", email = "dev@openagrinet.org" }
+]
+description = "OpenAgriNet Report Center — Frappe app for registry, A2C, and grievance reports"
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench.dev-dependencies]

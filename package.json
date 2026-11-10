@@ -1,0 +1,11 @@
+{
+  "name": "oan-reports-central",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "api": "powershell -ExecutionPolicy Bypass -File ./scripts/seed_and_run_api.ps1",
+    "start": "echo Run npm run api (or docker compose up) then npm run dev"
+  }
+}

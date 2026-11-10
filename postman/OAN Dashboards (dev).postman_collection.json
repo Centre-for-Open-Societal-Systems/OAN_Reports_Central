@@ -1,0 +1,487 @@
+{
+  "info": {
+    "_postman_id": "add22a74-995c-4532-af7b-8c617b836a42",
+    "name": "OAN Dashboards (dev)",
+    "description": "Public API of the OAN dashboards on the development environment. Every registry chart is served through one endpoint, `GET /api/charts`, backed by the per-registry dashboard services (farmer, livestock, crop sown) and a 15-minute cache.\n\nThe per-service collections call each service directly and only work against local services; this collection checks the deployed environment.\n\n**Request:** `GET /api/charts?charts=<id>,<id>,...`, with optional filters `region`, `zone`, `woreda`, `kebele` (P-codes such as `ET04`), `recordState` and `farmingType`.\n\n**Response:** `{success, data: {<chartId>: {chartName, success, data: [rows], error, executionTime}}, errors, summary: {total, successful, failed}}`. Row fields are those in the owning service's API reference.\n\n**Freshness:** figures can lag the registry by its reporting-view refresh interval plus up to 15 minutes of cache. An `executionTime` near 0 ms means the chart came from the cache.\n\n**Tests** (collection level): HTTP 200, the envelope, no failed chart, the expected fields per chart, and geography codes at the right level (`region_code` = ET + 2 digits, `zone_code` + 2 more, `woreda_code` + 2 more). The level check fails when most codes are off-level, as when a service maps its levels one step too deep; individual units outside the usual chain, such as special woredas, are only logged to the console.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "57831899",
+    "_collection_link": "https://go.postman.co/collection/49316197-add22a74-995c-4532-af7b-8c617b836a42?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Platform",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "config"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filter options",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/filter-options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "filter-options"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Map units",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/maps/units",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "maps",
+                "units"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Service health and what the deployment offers."
+    },
+    {
+      "name": "All registries",
+      "item": [
+        {
+          "name": "Headline KPIs, all registries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=farmerKpis,livestockKpis,cropKpis",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "farmerKpis,livestockKpis,cropKpis"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Headline KPIs, one region",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=farmerKpis,livestockKpis,cropKpis&region={{region}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "farmerKpis,livestockKpis,cropKpis"
+                },
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Farmer registry",
+      "item": [
+        {
+          "name": "Overview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=farmerKpis,farmersByRegion,farmersByGender,farmersByType,landTenureSplit,registryTrendByMonth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "farmerKpis,farmersByRegion,farmersByGender,farmersByType,landTenureSplit,registryTrendByMonth"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Demographics and status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=farmersByAgeAndGender,farmersByEducation,farmersByRecordState",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "farmersByAgeAndGender,farmersByEducation,farmersByRecordState"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Map drill-down: zones of a region",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=farmersByZone&region={{region}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "farmersByZone"
+                },
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Mixed farming",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=farmerKpis,farmersByRegion&farmingType=mixed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "farmerKpis,farmersByRegion"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "mixed"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Livestock registry",
+      "item": [
+        {
+          "name": "Livestock view",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=livestockKpis,livestockBySpecies,livestockKeepersByRegion,livestockTopWoredas,herdHealthSplit,livestockTrendByMonth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "livestockKpis,livestockBySpecies,livestockKeepersByRegion,livestockTopWoredas,herdHealthSplit,livestockTrendByMonth"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Herd details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=livestockByBreed,livestockBySex,livestockVaccinationStatus,livestockByState,livestockByRecordState",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "livestockByBreed,livestockBySex,livestockVaccinationStatus,livestockByState,livestockByRecordState"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Map drill-down: zones of a region",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=livestockKeepersByZone&region={{region}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "livestockKeepersByZone"
+                },
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Crop sown registry",
+      "item": [
+        {
+          "name": "Crop view",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=cropKpis,cropAreaByCrop,cropAreaByRegion,cropTopWoredas,cropLandTenureSplit,cropTrendByMonth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "cropKpis,cropAreaByCrop,cropAreaByRegion,cropTopWoredas,cropLandTenureSplit,cropTrendByMonth"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Season and workflow",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=cropBySeason,cropByStatus,cropByLifecycleStage,cropByRecordState",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "cropBySeason,cropByStatus,cropByLifecycleStage,cropByRecordState"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Map drill-down: zones of a region",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/charts?charts=cropAreaByZone&region={{region}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "charts"
+              ],
+              "query": [
+                {
+                  "key": "charts",
+                  "value": "cropAreaByZone"
+                },
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Expected row fields per chart ID (the dashboard services' API references).",
+          "const FIELDS = {\"farmerKpis\":[\"total_farmers\",\"female_farmers\",\"male_farmers\",\"total_land_size\",\"avg_farm_size\",\"farmers_with_owned_land\",\"household_heads\",\"farmers_with_id\",\"farmers_without_id\"],\"farmersByRegion\":[\"region\",\"region_code\",\"farmers\"],\"farmersByZone\":[\"zone\",\"zone_code\",\"farmers\"],\"farmersByGender\":[\"gender\",\"farmers\"],\"farmersByType\":[\"farming_type\",\"farmers\"],\"farmersByAgeAndGender\":[\"age_group\",\"gender\",\"farmers\"],\"farmersByEducation\":[\"education\",\"farmers\"],\"farmersByRecordState\":[\"record_state\",\"farmers\"],\"landTenureSplit\":[\"ownership_type\",\"parcels\",\"area\"],\"registryTrendByMonth\":[\"period\",\"farmers\",\"total_area\",\"owned_area\"],\"livestockKpis\":[\"holdings\",\"keepers\",\"female_keepers\",\"woredas_reporting\",\"animals\",\"species_tracked\",\"breeds_tracked\"],\"livestockBySpecies\":[\"species\",\"species_code\",\"animals\",\"keepers\"],\"livestockByBreed\":[\"breed\",\"breed_code\",\"species\",\"animals\"],\"livestockKeepersByRegion\":[\"region\",\"region_code\",\"farmers\",\"animals\"],\"livestockKeepersByZone\":[\"zone\",\"zone_code\",\"farmers\",\"animals\"],\"livestockTopWoredas\":[\"woreda\",\"woreda_code\",\"farmers\",\"animals\"],\"herdHealthSplit\":[\"health_status\",\"animals\"],\"livestockVaccinationStatus\":[\"vaccination_status\",\"animals\"],\"livestockBySex\":[\"sex\",\"animals\"],\"livestockTrendByMonth\":[\"period\",\"farmers\",\"holdings\",\"animals\"],\"livestockByState\":[\"state\",\"holdings\"],\"livestockByRecordState\":[\"record_state\",\"holdings\"],\"cropKpis\":[\"total_area\",\"owned_area\",\"farmers\",\"registrations\",\"crop_types\",\"woredas_reporting\",\"avg_plot_size\"],\"cropAreaByCrop\":[\"crop\",\"crop_code\",\"area\",\"farmers\"],\"cropAreaByRegion\":[\"region\",\"region_code\",\"farmers\",\"farmer_count\"],\"cropAreaByZone\":[\"zone\",\"zone_code\",\"farmers\",\"farmer_count\"],\"cropTopWoredas\":[\"woreda\",\"woreda_code\",\"area\",\"farmers\"],\"cropLandTenureSplit\":[\"ownership_type\",\"ownership_type_code\",\"parcels\",\"area\"],\"cropBySeason\":[\"season\",\"season_code\",\"area\",\"farmers\"],\"cropTrendByMonth\":[\"period\",\"farmers\",\"total_area\",\"owned_area\"],\"cropByStatus\":[\"status\",\"registrations\"],\"cropByLifecycleStage\":[\"lifecycle_stage\",\"registrations\"],\"cropByRecordState\":[\"record_state\",\"registrations\"]};",
+          "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+          "pm.test(\"JSON response\", () => pm.response.to.be.json);",
+          "const path = pm.request.url.getPath();",
+          "const body = pm.response.json();",
+          "if (path === \"/api/health\") {",
+          "  pm.test(\"status ok\", () => pm.expect(body.status).to.eql(\"ok\"));",
+          "} else if (path === \"/api/config\") {",
+          "  pm.test(\"registries offered\", () => pm.expect(body.dashboards).to.include(\"registries\"));",
+          "  pm.test(\"registry views reported\", () => pm.expect(body.registryViews).to.have.all.keys(\"crop\", \"livestock\"));",
+          "} else if (path === \"/api/filter-options\") {",
+          "  pm.test(\"regions are P-codes\", () => body.regions.forEach(r => pm.expect(r.code).to.match(/^ET[0-9]{2}$/)));",
+          "} else if (path === \"/api/maps/units\") {",
+          "  pm.test(\"woredas with their parents\", () => {",
+          "    pm.expect(body).to.be.an(\"array\").that.is.not.empty;",
+          "    pm.expect(body[0]).to.have.all.keys(\"woreda\", \"zone\", \"region\");",
+          "  });",
+          "} else if (path === \"/api/charts\") {",
+          "  const ids = (pm.request.url.query.get(\"charts\") || \"\").split(\",\").filter(Boolean);",
+          "  pm.test(\"Envelope has data and summary\", () => {",
+          "    pm.expect(body).to.have.property(\"data\").that.is.an(\"object\");",
+          "    pm.expect(body).to.have.property(\"summary\");",
+          "  });",
+          "  pm.test(\"No chart failed\", () => pm.expect(body.summary.failed, JSON.stringify(body.errors)).to.eql(0));",
+          "  ids.forEach(chart => {",
+          "    const result = body.data[chart];",
+          "    const keys = FIELDS[chart];",
+          "    pm.test(`${chart}: rows array`, () => {",
+          "      pm.expect(result, `${chart} missing`).to.be.an(\"object\");",
+          "      pm.expect(result.success, result && result.error).to.be.true;",
+          "      pm.expect(result.data).to.be.an(\"array\");",
+          "    });",
+          "    if (!keys || !result || !Array.isArray(result.data) || !result.data.length) return;",
+          "    pm.test(`${chart}: fields ${keys.join(\", \")}`, () => pm.expect(result.data[0]).to.include.all.keys(...keys));",
+          "    const codeKey = [\"region_code\", \"zone_code\", \"woreda_code\"].find(k => k in result.data[0]);",
+          "    if (!codeKey) return;",
+          "    // Catches a level shift (e.g. zones returned as regions): ET + 2 digits per level.",
+          "    // Units outside the usual chain (special woredas) are only logged; a majority fails.",
+          "    const width = { region_code: 4, zone_code: 6, woreda_code: 8 }[codeKey];",
+          "    const codes = result.data.map(r => r[codeKey]).filter(c => c !== \"Unknown\");",
+          "    const odd = codes.filter(c => !(typeof c === \"string\" && c.length === width && /^ET[0-9]+$/.test(c)));",
+          "    if (odd.length) console.warn(`${chart}: ${codeKey} outside the usual level:`, odd);",
+          "    pm.test(`${chart}: ${codeKey} is at its level`, () => {",
+          "      pm.expect(odd.length, `wrong-level codes: ${odd.slice(0, 5)}`).to.be.below(Math.max(1, codes.length / 2));",
+          "    });",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://oan-dashboard-development.oanstaging.com"
+    },
+    {
+      "key": "region",
+      "value": "ET04"
+    }
+  ]
+}

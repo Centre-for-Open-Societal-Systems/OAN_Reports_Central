@@ -1,0 +1,3523 @@
+{
+  "info": {
+    "_postman_id": "a6a26281-5810-4afc-9588-1da5ec72607d",
+    "name": "OAN Master Data Service - End to End",
+    "description": "# Master Data Service end-to-end test (New Dev)\n\nSelect the **OAN Master Data - New Dev** environment and run the whole collection with one iteration.\n\n## Two users are needed\nMDS approves changes with maker-checker inside the service. The person who edits or submits a draft cannot approve it.\n\n* `maker_username` / `maker_password`: a staff user with the **MASTER_DATA_ADMIN** role on the `master-data` client.\n* `checker_username` / `checker_password`: a different staff user with **MASTER_DATA_APPROVER** or **MASTER_DATA_ADMIN**.\n\nPut these in local (current) values only. Tokens stay in run-time variables. Both users sign in through staff IAM (login provider 1) and Keycloak, the same way as the registry collection. MDS takes the token as a Bearer header and does not need a CSRF header.\n\n## What it covers\n1. Service health and API description.\n2. Read-only coverage of the legacy `/geo` and `/attributes` APIs and the versioned `/catalogue` (versions, levels, units, P-code lookup, change history, datasets, values, audit trail).\n3. **Location rename with approval.** The maker renames the location in `geo_unit_id` (default kebele ET02010101) in a draft and submits it. The run checks that the published name has not changed yet, that a submitted draft is locked, that the maker cannot approve their own change and that rejection needs a note. The checker approves, and the run confirms the new name in the catalogue, in the legacy geo API the registries read, in the change history (RENAME) and in the audit trail. The previous version keeps the old name.\n4. **Restore.** The original name goes back through the same flow (`restore_after_test=true`).\n5. **Dataset value change with approval** and its restore, using `list_code` or the first published flat dataset with no open draft.\n\n## Safety\n* Nothing changes unless `enable_writes=true`.\n* The location flow is skipped when any geography draft is already open, so nobody else's draft is touched. A dataset with an open draft is never chosen.\n* If a run stops half-way, run folders 01 and 08 together. It discards only the draft this run opened.\n* Each approval publishes a new version. A full run with restore adds two geography versions and two versions of the chosen dataset. Published versions cannot be deleted.\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "57831899",
+    "_collection_link": "https://go.postman.co/collection/49316197-a6a26281-5810-4afc-9588-1da5ec72607d?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "00 Service health",
+      "item": [
+        {
+          "name": "01 Ping",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Master Data Service is up', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code !== 200) pm.execution.setNextRequest(null);",
+                  "['geo_writes_ok','ds_writes_ok','geo_draft_version','geo_restore_version','ds_draft_version','ds_restore_version','geo_original_name','geo_new_name','ds_list_code','ds_value','ds_new_display'].forEach(k => pm.variables.set(k, ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{master_data_url}}/ping",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "ping"
+              ]
+            },
+            "description": "Anonymous liveness check. Also clears run-time values from any earlier run."
+          },
+          "response": []
+        },
+        {
+          "name": "02 Read API description",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('OpenAPI description returned', () => pm.response.to.have.status(200));",
+                  "const spec = pm.response.json();",
+                  "const paths = Object.keys(spec.paths || {});",
+                  "console.log('Master Data API version', spec.info?.version, 'with', paths.length, 'paths');",
+                  "['/catalogue/upsert_draft_units','/catalogue/submit_geo_draft','/catalogue/approve_geo_draft','/catalogue/upsert_draft_values','/catalogue/submit_draft','/catalogue/approve_draft']",
+                  "  .forEach(p => pm.test('Endpoint exists: ' + p, () => pm.expect(paths).to.include(p)));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{master_data_url}}/openapi.json",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "openapi.json"
+              ]
+            },
+            "description": "Confirms the deployed version still exposes every endpoint this collection relies on."
+          },
+          "response": []
+        }
+      ],
+      "description": "Anonymous checks that the Master Data Service is reachable and serving its API description."
+    },
+    {
+      "name": "01 Sign in maker",
+      "item": [
+        {
+          "name": "01 Start IAM login",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "['maker_authorization_url', 'maker_login_action', 'maker_callback_url', 'maker_token', 'maker_username_claim', 'maker_iam_cookie', 'maker_kc_cookie'].forEach(k => pm.variables.set(k, ''));",
+                  "// Sign-in never uses Postman's cookie jar. Each user gets only the cookies from their own sign-in, so an earlier session cannot leak in."
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "function keepCookies(key) {",
+                  "    const jar = {};",
+                  "    String(pm.variables.get(key) || '').split(/;\\s*/).filter(Boolean).forEach(p => { const i = p.indexOf('='); if (i > 0) jar[p.slice(0, i)] = p.slice(i + 1); });",
+                  "    pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').forEach(h => {",
+                  "        const pair = h.value.split(';')[0].trim(); const i = pair.indexOf('=');",
+                  "        if (i < 1) return;",
+                  "        const name = pair.slice(0, i), value = pair.slice(i + 1);",
+                  "        if (!value || /max-age=0(?!\\d)/i.test(h.value) || /expires=[^;]*1970/i.test(h.value)) delete jar[name]; else jar[name] = value;",
+                  "    });",
+                  "    pm.variables.set(key, Object.entries(jar).map(([n, v]) => n + '=' + v).join('; '));",
+                  "}",
+                  "(function () {",
+                  "    const missing = ['maker_username', 'maker_password'].filter(k => !pm.variables.get(k) || String(pm.variables.get(k)).includes('{{'));",
+                  "    pm.test('Local maker credentials configured', () => pm.expect(missing, 'Set these in local environment values only: ' + missing.join(', ')).to.eql([]));",
+                  "    if (missing.length) { pm.execution.setNextRequest(null); console.error('Stopped: set maker_username and maker_password as local values.'); return; }",
+                  "    pm.test('IAM starts login', () => pm.response.to.have.status(200));",
+                  "    if (pm.response.code !== 200) { pm.execution.setNextRequest(null); return; }",
+                  "    keepCookies('maker_iam_cookie');",
+                  "    let login; try { login = pm.response.json(); } catch (_) { pm.execution.setNextRequest(null); return; }",
+                  "    const expected = pm.variables.get('kc_realm_url') + '/protocol/openid-connect/auth?';",
+                  "    const valid = typeof login.redirectUrl === 'string' && login.redirectUrl.startsWith(expected);",
+                  "    pm.test('Authorization URL uses configured staff realm', () => pm.expect(valid).to.eql(true));",
+                  "    if (!valid) { pm.execution.setNextRequest(null); return; }",
+                  "    pm.variables.set('maker_authorization_url', login.redirectUrl + '&prompt=login');",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": true
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{iam_base_url}}/auth/start_authentication_transaction?id={{login_provider_id}}&redirect_uri=%2Fen",
+              "host": [
+                "{{iam_base_url}}"
+              ],
+              "path": [
+                "auth",
+                "start_authentication_transaction"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{login_provider_id}}"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "%2Fen"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "02 Open Keycloak login form",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const value = pm.variables.get('maker_authorization_url');",
+                  "if (!value || !value.startsWith(pm.variables.get('kc_realm_url') + '/protocol/openid-connect/auth?')) {",
+                  "    pm.execution.setNextRequest(null); console.error('Stopped: run step 01 first.'); pm.execution.skipRequest();",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "function keepCookies(key) {",
+                  "    const jar = {};",
+                  "    String(pm.variables.get(key) || '').split(/;\\s*/).filter(Boolean).forEach(p => { const i = p.indexOf('='); if (i > 0) jar[p.slice(0, i)] = p.slice(i + 1); });",
+                  "    pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').forEach(h => {",
+                  "        const pair = h.value.split(';')[0].trim(); const i = pair.indexOf('=');",
+                  "        if (i < 1) return;",
+                  "        const name = pair.slice(0, i), value = pair.slice(i + 1);",
+                  "        if (!value || /max-age=0(?!\\d)/i.test(h.value) || /expires=[^;]*1970/i.test(h.value)) delete jar[name]; else jar[name] = value;",
+                  "    });",
+                  "    pm.variables.set(key, Object.entries(jar).map(([n, v]) => n + '=' + v).join('; '));",
+                  "}",
+                  "(function () {",
+                  "    pm.test('Keycloak login page loaded', () => pm.expect(pm.response.code, 'Expected the login form (200). A redirect here means Keycloak reused a session.').to.eql(200));",
+                  "    if (pm.response.code !== 200) { pm.execution.setNextRequest(null); return; }",
+                  "    keepCookies('maker_kc_cookie');",
+                  "    const form = pm.response.text().match(/<form\\b[^>]*\\bid=[\"']kc-form-login[\"'][^>]*>/i);",
+                  "    pm.test('Login form is present', () => pm.expect(form).not.to.eql(null));",
+                  "    if (!form) { pm.execution.setNextRequest(null); return; }",
+                  "    const url = form[0].match(/\\baction=[\"']([^\"']+)[\"']/i)?.[1]?.replace(/&amp;/g, '&');",
+                  "    const valid = typeof url === 'string' && url.startsWith(pm.variables.get('kc_realm_url') + '/login-actions/');",
+                  "    pm.test('Credentials go only to configured Keycloak realm', () => pm.expect(valid).to.eql(true));",
+                  "    if (!valid) { pm.execution.setNextRequest(null); return; }",
+                  "    pm.variables.set('maker_login_action', url);",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{maker_authorization_url}}",
+              "host": [
+                "{{maker_authorization_url}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03 Sign in maker",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const value = pm.variables.get('maker_login_action');",
+                  "if (!value || !value.startsWith(pm.variables.get('kc_realm_url') + '/login-actions/')) {",
+                  "    pm.execution.setNextRequest(null); console.error('Stopped: run steps 01 and 02 first.'); pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.variables.get('maker_kc_cookie')) pm.request.headers.remove('Cookie');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function () {",
+                  "    const accepted = [302, 303].includes(pm.response.code);",
+                  "    let reason = 'Sign-in did not redirect.';",
+                  "    if (!accepted) {",
+                  "        const html = pm.response.text();",
+                  "        const m = html.match(/id=[\"']input-error[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/span>/i) || html.match(/class=[\"'][^\"']*(?:kc-feedback-text|alert-error|pf-c-alert__title|kc-alert)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\//i);",
+                  "        const msg = m ? m[1].replace(/<[^>]+>/g, '').replace(/\\s+/g, ' ').trim() : '';",
+                  "        reason = 'Keycloak said: ' + (msg || 'login page shown again (usually a wrong username or password, or a required account action)');",
+                  "        console.error('Maker sign-in refused. ' + reason);",
+                  "    }",
+                  "    pm.test('Keycloak accepts maker', () => pm.expect(accepted, reason).to.eql(true));",
+                  "    const location = pm.response.headers.get('Location') || '';",
+                  "    const valid = accepted && location.startsWith(pm.variables.get('iam_base_url') + '/auth/callback?');",
+                  "    pm.test('Authorization code returns to configured IAM', () => pm.expect(valid).to.eql(true));",
+                  "    if (!valid) { pm.execution.setNextRequest(null); return; }",
+                  "    pm.variables.set('maker_callback_url', location);",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "{{maker_kc_cookie}}"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "value": "{{maker_username}}",
+                  "type": "text",
+                  "key": "username"
+                },
+                {
+                  "value": "{{maker_password}}",
+                  "type": "text",
+                  "key": "password"
+                },
+                {
+                  "value": "",
+                  "type": "text",
+                  "key": "credentialId"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{maker_login_action}}",
+              "host": [
+                "{{maker_login_action}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04 Complete IAM callback and keep token",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const value = pm.variables.get('maker_callback_url');",
+                  "if (!value || !value.startsWith(pm.variables.get('iam_base_url') + '/auth/callback?')) {",
+                  "    pm.execution.setNextRequest(null); console.error('Stopped: sign-in did not complete.'); pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.variables.get('maker_iam_cookie')) pm.request.headers.remove('Cookie');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('IAM callback redirects after exchange', () => pm.expect([302, 303, 307]).to.include(pm.response.code));",
+                  "const tokens = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie')",
+                  "    .map(h => h.value.match(/^X-Access-Token=([^;]*)/i)?.[1]?.replace(/^\"|\"$/g, '')).filter(Boolean);",
+                  "const token = tokens[tokens.length - 1];",
+                  "pm.test('IAM issued access token', () => pm.expect(token).to.be.a('string').and.not.empty);",
+                  "if (!token) { pm.execution.setNextRequest(null); } else {",
+                  "    pm.variables.set('maker_token', token);",
+                  "    const Buffer = require('buffer').Buffer;",
+                  "    const claims = JSON.parse(Buffer.from(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());",
+                  "    const roles = claims.resource_access?.[pm.variables.get('mds_client_id')]?.roles || [];",
+                  "    const who = String(claims.preferred_username || claims.email || claims.sub || '');",
+                  "    pm.variables.set('maker_username_claim', who);",
+                  "    console.log('Maker signed in as ' + who + ' with roles ' + roles.join(', '));",
+                  "    pm.test('Token is from the New Dev staff realm', () => pm.expect(claims.iss).to.eql(pm.variables.get('kc_realm_url')));",
+                  "    const asked = String(pm.variables.get('maker_username') || '').trim().toLowerCase();",
+                  "    const owner = [String(claims.preferred_username || '').toLowerCase(), String(claims.email || '').toLowerCase()];",
+                  "    pm.test('Token belongs to the maker who signed in', () => pm.expect(owner, 'Signed in as ' + asked + ' but the token is for ' + who).to.include(asked));",
+                  "    if (!owner.includes(asked)) { pm.execution.setNextRequest(null); console.error('Stopped: the maker token is for ' + who + ', not ' + asked + '.'); }",
+                  "    pm.test('Maker holds the required Master Data role', () => pm.expect(roles.some(r => r === 'MASTER_DATA_ADMIN'), 'Roles found: ' + roles.join(', ')).to.eql(true));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "{{maker_iam_cookie}}"
+              }
+            ],
+            "url": {
+              "raw": "{{maker_callback_url}}",
+              "host": [
+                "{{maker_callback_url}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Signs in the maker. The maker needs the MASTER_DATA_ADMIN role on the master-data client (geo:edit and referenceData:edit). Sign-in turns off Postman's cookie jar and passes on only this user's own sign-in cookies, so an earlier session is never reused."
+    },
+    {
+      "name": "02 Sign in checker",
+      "item": [
+        {
+          "name": "01 Start IAM login",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "['checker_authorization_url', 'checker_login_action', 'checker_callback_url', 'checker_token', 'checker_username_claim', 'checker_iam_cookie', 'checker_kc_cookie'].forEach(k => pm.variables.set(k, ''));",
+                  "// Sign-in never uses Postman's cookie jar. Each user gets only the cookies from their own sign-in, so an earlier session cannot leak in.",
+                  "const same = String(pm.variables.get('checker_username') || '').trim().toLowerCase() === String(pm.variables.get('maker_username') || '').trim().toLowerCase();",
+                  "if (same) {",
+                  "    pm.test('Checker username is different from the maker username', () => pm.expect(same, 'checker_username is the same as maker_username. MDS does not let one person make and approve a change, so use two different staff users.').to.eql(false));",
+                  "    pm.execution.setNextRequest(null); pm.execution.skipRequest();",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "function keepCookies(key) {",
+                  "    const jar = {};",
+                  "    String(pm.variables.get(key) || '').split(/;\\s*/).filter(Boolean).forEach(p => { const i = p.indexOf('='); if (i > 0) jar[p.slice(0, i)] = p.slice(i + 1); });",
+                  "    pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').forEach(h => {",
+                  "        const pair = h.value.split(';')[0].trim(); const i = pair.indexOf('=');",
+                  "        if (i < 1) return;",
+                  "        const name = pair.slice(0, i), value = pair.slice(i + 1);",
+                  "        if (!value || /max-age=0(?!\\d)/i.test(h.value) || /expires=[^;]*1970/i.test(h.value)) delete jar[name]; else jar[name] = value;",
+                  "    });",
+                  "    pm.variables.set(key, Object.entries(jar).map(([n, v]) => n + '=' + v).join('; '));",
+                  "}",
+                  "(function () {",
+                  "    const missing = ['checker_username', 'checker_password'].filter(k => !pm.variables.get(k) || String(pm.variables.get(k)).includes('{{'));",
+                  "    pm.test('Local checker credentials configured', () => pm.expect(missing, 'Set these in local environment values only: ' + missing.join(', ')).to.eql([]));",
+                  "    if (missing.length) { pm.execution.setNextRequest(null); console.error('Stopped: set checker_username and checker_password as local values.'); return; }",
+                  "    pm.test('IAM starts login', () => pm.response.to.have.status(200));",
+                  "    if (pm.response.code !== 200) { pm.execution.setNextRequest(null); return; }",
+                  "    keepCookies('checker_iam_cookie');",
+                  "    let login; try { login = pm.response.json(); } catch (_) { pm.execution.setNextRequest(null); return; }",
+                  "    const expected = pm.variables.get('kc_realm_url') + '/protocol/openid-connect/auth?';",
+                  "    const valid = typeof login.redirectUrl === 'string' && login.redirectUrl.startsWith(expected);",
+                  "    pm.test('Authorization URL uses configured staff realm', () => pm.expect(valid).to.eql(true));",
+                  "    if (!valid) { pm.execution.setNextRequest(null); return; }",
+                  "    pm.variables.set('checker_authorization_url', login.redirectUrl + '&prompt=login');",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": true
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{iam_base_url}}/auth/start_authentication_transaction?id={{login_provider_id}}&redirect_uri=%2Fen",
+              "host": [
+                "{{iam_base_url}}"
+              ],
+              "path": [
+                "auth",
+                "start_authentication_transaction"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{login_provider_id}}"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "%2Fen"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "02 Open Keycloak login form",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const value = pm.variables.get('checker_authorization_url');",
+                  "if (!value || !value.startsWith(pm.variables.get('kc_realm_url') + '/protocol/openid-connect/auth?')) {",
+                  "    pm.execution.setNextRequest(null); console.error('Stopped: run step 01 first.'); pm.execution.skipRequest();",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "function keepCookies(key) {",
+                  "    const jar = {};",
+                  "    String(pm.variables.get(key) || '').split(/;\\s*/).filter(Boolean).forEach(p => { const i = p.indexOf('='); if (i > 0) jar[p.slice(0, i)] = p.slice(i + 1); });",
+                  "    pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie').forEach(h => {",
+                  "        const pair = h.value.split(';')[0].trim(); const i = pair.indexOf('=');",
+                  "        if (i < 1) return;",
+                  "        const name = pair.slice(0, i), value = pair.slice(i + 1);",
+                  "        if (!value || /max-age=0(?!\\d)/i.test(h.value) || /expires=[^;]*1970/i.test(h.value)) delete jar[name]; else jar[name] = value;",
+                  "    });",
+                  "    pm.variables.set(key, Object.entries(jar).map(([n, v]) => n + '=' + v).join('; '));",
+                  "}",
+                  "(function () {",
+                  "    pm.test('Keycloak login page loaded', () => pm.expect(pm.response.code, 'Expected the login form (200). A redirect here means Keycloak reused a session.').to.eql(200));",
+                  "    if (pm.response.code !== 200) { pm.execution.setNextRequest(null); return; }",
+                  "    keepCookies('checker_kc_cookie');",
+                  "    const form = pm.response.text().match(/<form\\b[^>]*\\bid=[\"']kc-form-login[\"'][^>]*>/i);",
+                  "    pm.test('Login form is present', () => pm.expect(form).not.to.eql(null));",
+                  "    if (!form) { pm.execution.setNextRequest(null); return; }",
+                  "    const url = form[0].match(/\\baction=[\"']([^\"']+)[\"']/i)?.[1]?.replace(/&amp;/g, '&');",
+                  "    const valid = typeof url === 'string' && url.startsWith(pm.variables.get('kc_realm_url') + '/login-actions/');",
+                  "    pm.test('Credentials go only to configured Keycloak realm', () => pm.expect(valid).to.eql(true));",
+                  "    if (!valid) { pm.execution.setNextRequest(null); return; }",
+                  "    pm.variables.set('checker_login_action', url);",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{checker_authorization_url}}",
+              "host": [
+                "{{checker_authorization_url}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03 Sign in checker",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const value = pm.variables.get('checker_login_action');",
+                  "if (!value || !value.startsWith(pm.variables.get('kc_realm_url') + '/login-actions/')) {",
+                  "    pm.execution.setNextRequest(null); console.error('Stopped: run steps 01 and 02 first.'); pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.variables.get('checker_kc_cookie')) pm.request.headers.remove('Cookie');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function () {",
+                  "    const accepted = [302, 303].includes(pm.response.code);",
+                  "    let reason = 'Sign-in did not redirect.';",
+                  "    if (!accepted) {",
+                  "        const html = pm.response.text();",
+                  "        const m = html.match(/id=[\"']input-error[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\/span>/i) || html.match(/class=[\"'][^\"']*(?:kc-feedback-text|alert-error|pf-c-alert__title|kc-alert)[^\"']*[\"'][^>]*>([\\s\\S]*?)<\\//i);",
+                  "        const msg = m ? m[1].replace(/<[^>]+>/g, '').replace(/\\s+/g, ' ').trim() : '';",
+                  "        reason = 'Keycloak said: ' + (msg || 'login page shown again (usually a wrong username or password, or a required account action)');",
+                  "        console.error('Checker sign-in refused. ' + reason);",
+                  "    }",
+                  "    pm.test('Keycloak accepts checker', () => pm.expect(accepted, reason).to.eql(true));",
+                  "    const location = pm.response.headers.get('Location') || '';",
+                  "    const valid = accepted && location.startsWith(pm.variables.get('iam_base_url') + '/auth/callback?');",
+                  "    pm.test('Authorization code returns to configured IAM', () => pm.expect(valid).to.eql(true));",
+                  "    if (!valid) { pm.execution.setNextRequest(null); return; }",
+                  "    pm.variables.set('checker_callback_url', location);",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "{{checker_kc_cookie}}"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{checker_username}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{checker_password}}",
+                  "type": "text"
+                },
+                {
+                  "key": "credentialId",
+                  "value": "",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{checker_login_action}}",
+              "host": [
+                "{{checker_login_action}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04 Complete IAM callback and keep token",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const value = pm.variables.get('checker_callback_url');",
+                  "if (!value || !value.startsWith(pm.variables.get('iam_base_url') + '/auth/callback?')) {",
+                  "    pm.execution.setNextRequest(null); console.error('Stopped: sign-in did not complete.'); pm.execution.skipRequest();",
+                  "}",
+                  "if (!pm.variables.get('checker_iam_cookie')) pm.request.headers.remove('Cookie');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('IAM callback redirects after exchange', () => pm.expect([302, 303, 307]).to.include(pm.response.code));",
+                  "const tokens = pm.response.headers.all().filter(h => h.key.toLowerCase() === 'set-cookie')",
+                  "    .map(h => h.value.match(/^X-Access-Token=([^;]*)/i)?.[1]?.replace(/^\"|\"$/g, '')).filter(Boolean);",
+                  "const token = tokens[tokens.length - 1];",
+                  "pm.test('IAM issued access token', () => pm.expect(token).to.be.a('string').and.not.empty);",
+                  "if (!token) { pm.execution.setNextRequest(null); } else {",
+                  "    pm.variables.set('checker_token', token);",
+                  "    const Buffer = require('buffer').Buffer;",
+                  "    const claims = JSON.parse(Buffer.from(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());",
+                  "    const roles = claims.resource_access?.[pm.variables.get('mds_client_id')]?.roles || [];",
+                  "    const who = String(claims.preferred_username || claims.email || claims.sub || '');",
+                  "    pm.variables.set('checker_username_claim', who);",
+                  "    console.log('Checker signed in as ' + who + ' with roles ' + roles.join(', '));",
+                  "    pm.test('Token is from the New Dev staff realm', () => pm.expect(claims.iss).to.eql(pm.variables.get('kc_realm_url')));",
+                  "    const asked = String(pm.variables.get('checker_username') || '').trim().toLowerCase();",
+                  "    const owner = [String(claims.preferred_username || '').toLowerCase(), String(claims.email || '').toLowerCase()];",
+                  "    pm.test('Token belongs to the checker who signed in', () => pm.expect(owner, 'Signed in as ' + asked + ' but the token is for ' + who).to.include(asked));",
+                  "    if (!owner.includes(asked)) { pm.execution.setNextRequest(null); console.error('Stopped: the checker token is for ' + who + ', not ' + asked + '.'); }",
+                  "    pm.test('Checker holds the required Master Data role', () => pm.expect(roles.some(r => ['MASTER_DATA_APPROVER','MASTER_DATA_ADMIN'].includes(r)), 'Roles found: ' + roles.join(', ')).to.eql(true));",
+                  "    const sameUser = who.toLowerCase() === String(pm.variables.get('maker_username_claim') || '').toLowerCase();",
+                  "    pm.test('Checker is a different person from the maker', () => pm.expect(sameUser, 'Maker and checker tokens are both for ' + who).to.eql(false));",
+                  "    if (sameUser) { pm.execution.setNextRequest(null); console.error('Stopped: maker and checker must be two different users.'); }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          },
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "{{checker_iam_cookie}}"
+              }
+            ],
+            "url": {
+              "raw": "{{checker_callback_url}}",
+              "host": [
+                "{{checker_callback_url}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Signs in the checker. The checker needs MASTER_DATA_APPROVER or MASTER_DATA_ADMIN (geo:publish and referenceData:publish) and must be a different user from the maker, because MDS rejects self-approval. Sign-in turns off Postman's cookie jar and passes on only this user's own sign-in cookies, so an earlier session is never reused."
+    },
+    {
+      "name": "03 Read master data",
+      "item": [
+        {
+          "name": "01 Read catalogue configuration",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "console.log('Catalogue configuration', JSON.stringify(payload));",
+                  "pm.test('Approval runs inside Master Data (maker-checker), not through AWE', () => pm.expect(String(payload?.approval_mode || '')).to.not.eql('awe'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_catalogue_config",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_catalogue_config"
+              ]
+            },
+            "description": "Approval mode, current geography version and audit settings."
+          },
+          "response": []
+        },
+        {
+          "name": "02 Legacy: list administrative levels",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Levels returned', () => pm.expect(payload).to.be.an('array').and.not.empty);",
+                  "pm.variables.set('geo_levels', JSON.stringify(payload || []));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/geo/get_all_geo_levels",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "geo",
+                "get_all_geo_levels"
+              ]
+            },
+            "description": "The older geo API the registries call today."
+          },
+          "response": []
+        },
+        {
+          "name": "03 Catalogue: geography versions and open drafts",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const versions = payload?.versions || [];",
+                  "const published = versions.filter(v => v.status === 'PUBLISHED').sort((a, b) => b.version_no - a.version_no)[0];",
+                  "const open = versions.filter(v => ['DRAFT', 'SUBMITTED'].includes(v.status));",
+                  "pm.test('A published geography version exists', () => pm.expect(published).to.be.an('object'));",
+                  "pm.variables.set('geo_published_before', published ? String(published.version_no) : '');",
+                  "pm.test('No other geography draft is open', () => pm.expect(open.map(v => v.version_no + ' ' + v.status), 'Someone else has an open geography draft. The change flow is skipped so their work is not touched.').to.eql([]));",
+                  "pm.variables.set('geo_writes_ok', String(!!published && open.length === 0 && pm.variables.get('enable_writes') === 'true'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_versions",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_versions"
+              ]
+            },
+            "description": "Lists every geography version. The change flow only runs when no DRAFT or SUBMITTED version belongs to someone else."
+          },
+          "response": []
+        },
+        {
+          "name": "04 Catalogue: levels of the published geography",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {version: 'latest'};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Published levels returned', () => pm.expect(payload?.levels).to.be.an('array').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_levels",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_levels"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "05 Catalogue: look up the test location by P-code",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const unit = payload?.unit;",
+                  "pm.test('Test location exists and is active', () => { pm.expect(unit).to.be.an('object'); pm.expect(unit.status).to.eql('ACTIVE'); });",
+                  "if (!unit) { pm.execution.setNextRequest(null); throw new Error('Set geo_unit_id to an existing P-code'); }",
+                  "pm.test('Ancestors are returned', () => pm.expect(payload.ancestors).to.be.an('array'));",
+                  "pm.variables.set('geo_unit', JSON.stringify(unit));",
+                  "pm.variables.set('geo_original_name', unit.name);",
+                  "// Candidate random names; the next request picks one that no sibling location already uses",
+                  "const first = ['Abay', 'Awash', 'Tana', 'Genale', 'Baro', 'Omo', 'Tekeze', 'Wabi', 'Dinder', 'Gibe', 'Mareb', 'Ziway', 'Langano', 'Abaya', 'Chamo', 'Hawassa'];",
+                  "const second = ['Meda', 'Ber', 'Gora', 'Sefer', 'Mender', 'Wenz', 'Dildy', 'Amba', 'Kolla', 'Dega'];",
+                  "const names = [];",
+                  "first.forEach(a => second.forEach(b => names.push(a + ' ' + b)));",
+                  "pm.variables.set('geo_name_candidates', JSON.stringify(names));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {version: 'latest', unit_id: pm.variables.get('geo_unit_id')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_unit",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_unit"
+              ]
+            },
+            "description": "Reads the location named by geo_unit_id and records its current name, level and parent."
+          },
+          "response": []
+        },
+        {
+          "name": "06 Catalogue: list sibling locations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const units = payload?.units || [];",
+                  "pm.test('Siblings include the test location', () => pm.expect(units.map(u => u.unit_id)).to.include(pm.variables.get('geo_unit_id')));",
+                  "pm.test('Total is reported', () => pm.expect(payload?.total).to.be.a('number'));",
+                  "// Pick a fresh random name that the location and its siblings do not already use",
+                  "const taken = units.map(u => String(u.name).toLowerCase());",
+                  "const free = JSON.parse(pm.variables.get('geo_name_candidates') || '[]').filter(n => !taken.includes(n.toLowerCase()));",
+                  "pm.test('A free random name is available', () => pm.expect(free).to.not.be.empty);",
+                  "if (!free.length) { pm.execution.setNextRequest(null); throw new Error('No free name left'); }",
+                  "const newName = free[Math.floor(Math.random() * free.length)];",
+                  "pm.variables.set('geo_new_name', newName);",
+                  "console.log('Test location', pm.variables.get('geo_unit_id'), '\"' + pm.variables.get('geo_original_name') + '\"', 'will be renamed to', '\"' + newName + '\"');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const unit = JSON.parse(pm.variables.get('geo_unit'));",
+                  "const payload = {version: 'latest', parent_unit_id: unit.parent_unit_id || '', include_retired: false};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload)); pm.variables.set('page_size', '500');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_units",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_units"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "07 Legacy: location values under the same parent",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const unit = JSON.parse(pm.variables.get('geo_unit'));",
+                  "const payload = {level_id: unit.level_id, parent_level_value_id: unit.parent_unit_id};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const row = (payload || []).find(v => v.level_value_id === pm.variables.get('geo_unit_id'));",
+                  "pm.test('Legacy API shows the current name', () => pm.expect(row?.level_value_mnemonic).to.eql(pm.variables.get('geo_original_name')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/geo/get_geo_level_values",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "geo",
+                "get_geo_level_values"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "08 Catalogue: change history of the test location",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {unit_id: pm.variables.get('geo_unit_id'), include_draft: false};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Change history returned', () => pm.expect(payload?.changes).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_changes",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_changes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "09 Legacy: list attributes",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Attributes returned', () => pm.expect(payload?.attributes).to.be.an('array').and.not.empty);",
+                  "pm.variables.set('attributes', JSON.stringify(payload?.attributes || []));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/attributes/get_all_attributes",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "attributes",
+                "get_all_attributes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10 Catalogue: choose a dataset for the change test",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {include_unpublished: false};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const lists = payload?.lists || [];",
+                  "pm.test('Datasets returned', () => pm.expect(lists).to.not.be.empty);",
+                  "const wanted = pm.variables.get('list_code');",
+                  "const list = wanted ? lists.find(l => l.list_code === wanted)",
+                  "                    : lists.find(l => l.latest_published_version_no && !l.open_draft_version_no && !l.is_hierarchical);",
+                  "pm.test('A dataset without an open draft is available', () => pm.expect(list, wanted ? 'Dataset ' + wanted + ' not found' : 'Every dataset has an open draft').to.be.an('object'));",
+                  "if (list) {",
+                  "    pm.test('Chosen dataset has no open draft', () => pm.expect(list.open_draft_version_no || null, 'Dataset ' + list.list_code + ' has draft ' + list.open_draft_version_no + ' ' + list.open_draft_status).to.eql(null));",
+                  "    pm.variables.set('ds_list_code', list.list_code);",
+                  "    pm.collectionVariables.set('ds_list_code', list.list_code);",
+                  "    pm.variables.set('ds_published_before', String(list.latest_published_version_no));",
+                  "    pm.variables.set('ds_writes_ok', String(!list.open_draft_version_no && pm.variables.get('enable_writes') === 'true'));",
+                  "    console.log('Dataset for the change test:', list.list_code, 'v' + list.latest_published_version_no);",
+                  "} else { pm.variables.set('ds_writes_ok', 'false'); }"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_lists",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_lists"
+              ]
+            },
+            "description": "Uses list_code when set, otherwise the first published, flat dataset with no open draft."
+          },
+          "response": []
+        },
+        {
+          "name": "11 Catalogue: read dataset values",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (!pm.variables.get('ds_list_code')) pm.execution.skipRequest();",
+                  "const payload = {version: 'latest', list_code: pm.variables.get('ds_list_code'), include_retired: false};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload)); pm.variables.set('page_size', '500');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const values = payload?.values || [];",
+                  "pm.test('Dataset has active values', () => pm.expect(values).to.not.be.empty);",
+                  "const value = values.find(v => v.status === 'ACTIVE');",
+                  "if (value) {",
+                  "    pm.variables.set('ds_value', JSON.stringify(value));",
+                  "    const base = String(value.display || value.value_code).replace(/ \\(MDS test.*\\)$/, '');",
+                  "    pm.variables.set('ds_new_display', base + ' (MDS test ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ')');",
+                  "    console.log('Dataset value', value.value_code, value.display, 'will become', pm.variables.get('ds_new_display'));",
+                  "} else { pm.variables.set('ds_writes_ok', 'false'); }"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_list_values",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_list_values"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "12 Legacy: values of the matching attribute",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const attr = JSON.parse(pm.variables.get('attributes') || '[]').find(a => a.attribute_code === pm.variables.get('ds_list_code'));",
+                  "if (!attr) { console.warn('No legacy attribute matches this dataset; skipped.'); pm.execution.skipRequest(); }",
+                  "pm.variables.set('ds_attribute_id', attr ? attr.attribute_id : '');",
+                  "const payload = {attribute_id: attr ? attr.attribute_id : ''};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Legacy attribute values returned', () => pm.expect(payload?.attribute_values).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/attributes/get_attribute_values",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "attributes",
+                "get_attribute_values"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "13 Audit: recent catalogue activity",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {cursor: 0, limit: 20, newest: true};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Audit events returned', () => pm.expect(payload?.events).to.be.an('array'));",
+                  "pm.variables.set('audit_cursor_before', String(payload?.next_cursor ?? ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_changes",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_changes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "14 Negative: draft geography is not readable when none is open",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {version: 'draft'};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let r = {}; try { r = pm.response.json(); } catch (_) {} const h = r.response_header || {};",
+                  "pm.test('Refused with G2P-CAT-404', () => pm.expect(h.response_error_code || r.errors?.[0]?.code || String(pm.response.code), h.response_error_message || '').to.eql('G2P-CAT-404'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_levels",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_levels"
+              ]
+            },
+            "description": "Expects G2P-CAT-404 because no geography draft is open yet."
+          },
+          "response": []
+        }
+      ],
+      "description": "Read-only coverage of the legacy geo and attributes APIs and the versioned catalogue. Also records the test target and checks that no other draft is open before anything is changed."
+    },
+    {
+      "name": "04 Change a location name and approve it",
+      "item": [
+        {
+          "name": "01 Maker renames the location in a draft",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const unit = JSON.parse(pm.variables.get('geo_unit'));",
+                  "const payload = {units: [{unit_id: unit.unit_id, level_id: unit.level_id, name: pm.variables.get('geo_new_name'), parent_unit_id: unit.parent_unit_id}]};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Draft is open', () => pm.expect(payload?.draft?.status).to.eql('DRAFT'));",
+                  "pm.test('Draft carries the new name', () => pm.expect(payload?.units?.find(u => u.unit_id === pm.variables.get('geo_unit_id'))?.name).to.eql(pm.variables.get('geo_new_name')));",
+                  "pm.variables.set('geo_draft_version', String(payload?.draft?.version_no || ''));",
+                  "pm.collectionVariables.set('geo_draft_version', String(payload?.draft?.version_no || ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/upsert_draft_units",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "upsert_draft_units"
+              ]
+            },
+            "description": "Same unit_id, level and parent, new name. The draft opens automatically from the latest published version."
+          },
+          "response": []
+        },
+        {
+          "name": "02 Draft shows the new name",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {version: 'draft', unit_id: pm.variables.get('geo_unit_id')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Draft version has the new name', () => pm.expect(payload?.unit?.name).to.eql(pm.variables.get('geo_new_name')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_unit",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_unit"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03 Published data still shows the old name",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {version: 'latest', unit_id: pm.variables.get('geo_unit_id')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Nothing is published before approval', () => pm.expect(payload?.unit?.name).to.eql(pm.variables.get('geo_original_name')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_unit",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_unit"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04 Maker submits the draft for approval",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {change_note: 'Postman MDS test: rename ' + pm.variables.get('geo_unit_id')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Draft is submitted', () => pm.expect(payload?.draft?.status).to.eql('SUBMITTED'));",
+                  "pm.test('Submitted by the maker', () => pm.expect(payload?.draft?.submitted_by_name || payload?.draft?.submitted_by).to.be.ok);"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/submit_geo_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "submit_geo_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "05 Negative: submitted draft can no longer be edited",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const unit = JSON.parse(pm.variables.get('geo_unit'));",
+                  "const payload = {units: [{unit_id: unit.unit_id, level_id: unit.level_id, name: pm.variables.get('geo_new_name'), parent_unit_id: unit.parent_unit_id}]};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let r = {}; try { r = pm.response.json(); } catch (_) {} const h = r.response_header || {};",
+                  "pm.test('Refused with G2P-CAT-409', () => pm.expect(h.response_error_code || r.errors?.[0]?.code || String(pm.response.code), h.response_error_message || '').to.eql('G2P-CAT-409'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/upsert_draft_units",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "upsert_draft_units"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06 Negative: maker cannot approve their own change",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {version_no: Number(pm.variables.get('geo_draft_version'))};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let r = {}; try { r = pm.response.json(); } catch (_) {} const h = r.response_header || {};",
+                  "pm.test('Refused with G2P-CAT-403', () => pm.expect(h.response_error_code || r.errors?.[0]?.code || String(pm.response.code), h.response_error_message || '').to.eql('G2P-CAT-403'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/approve_geo_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "approve_geo_draft"
+              ]
+            },
+            "description": "Maker-checker: the approver must not be the person who created, edited or submitted the draft."
+          },
+          "response": []
+        },
+        {
+          "name": "07 Negative: rejection needs a note",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('checker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {version_no: Number(pm.variables.get('geo_draft_version'))};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let r = {}; try { r = pm.response.json(); } catch (_) {} const h = r.response_header || {};",
+                  "pm.test('Refused with G2P-CAT-400', () => pm.expect(h.response_error_code || r.errors?.[0]?.code || String(pm.response.code), h.response_error_message || '').to.eql('G2P-CAT-400'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{checker_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/reject_geo_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "reject_geo_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "08 Checker approves the change",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('checker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {version_no: Number(pm.variables.get('geo_draft_version')), decision_note: 'Approved by Postman MDS test'};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Version is published', () => pm.expect(payload?.draft?.status).to.eql('PUBLISHED'));",
+                  "pm.test('Published version is the submitted one', () => pm.expect(String(payload?.draft?.version_no)).to.eql(pm.variables.get('geo_draft_version')));",
+                  "pm.test('Decision is recorded', () => { pm.expect(payload?.draft?.decided_by_name || payload?.draft?.decided_by).to.be.ok; pm.expect(payload?.draft?.published_at).to.be.ok; });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{checker_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/approve_geo_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "approve_geo_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "09 Published data shows the new name",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {version: 'latest', unit_id: pm.variables.get('geo_unit_id')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Latest version is the approved one', () => pm.expect(String(payload?.version?.version_no)).to.eql(pm.variables.get('geo_draft_version')));",
+                  "pm.test('Location name is updated', () => pm.expect(payload?.unit?.name).to.eql(pm.variables.get('geo_new_name')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_unit",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_unit"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10 Legacy geo API shows the new name",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const unit = JSON.parse(pm.variables.get('geo_unit'));",
+                  "const payload = {level_id: unit.level_id, parent_level_value_id: unit.parent_unit_id};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const row = (payload || []).find(v => v.level_value_id === pm.variables.get('geo_unit_id'));",
+                  "pm.test('Registries see the new name', () => pm.expect(row?.level_value_mnemonic).to.eql(pm.variables.get('geo_new_name')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/geo/get_geo_level_values",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "geo",
+                "get_geo_level_values"
+              ]
+            },
+            "description": "The older API the registries read is refreshed on approval."
+          },
+          "response": []
+        },
+        {
+          "name": "11 Previous version still has the old name",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {version: Number(pm.variables.get('geo_published_before')), unit_id: pm.variables.get('geo_unit_id')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('History is kept', () => pm.expect(payload?.unit?.name).to.eql(pm.variables.get('geo_original_name')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_unit",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_unit"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "12 Rename appears in the change history",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {unit_id: pm.variables.get('geo_unit_id'), include_draft: false};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const change = (payload?.changes || []).find(c => String(c.version_no) === pm.variables.get('geo_draft_version') && c.change_type === 'RENAME');",
+                  "pm.test('RENAME event recorded for the new version', () => pm.expect(change).to.be.an('object'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_changes",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_changes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "13 Audit records submit and approval",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "const payload = {cursor: 0, limit: 50, subject_type: 'geo', newest: true};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const v = pm.variables.get('geo_draft_version');",
+                  "const types = (payload?.events || []).filter(e => String(e.version_no) === v).map(e => e.event_type);",
+                  "console.log('Audit events for geography version', v, types.join(', '));",
+                  "pm.test('Submission is audited', () => pm.expect(types.some(t => t.includes('submitted'))).to.eql(true));",
+                  "pm.test('Approval is audited', () => pm.expect(types.some(t => t.includes('approved') || t.includes('published'))).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_changes",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_changes"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Maker renames the test location in a draft and submits it. MDS refuses self-approval and a rejection without a note. The checker approves, which publishes a new geography version, and the new name is confirmed in both the catalogue and the legacy geo API."
+    },
+    {
+      "name": "05 Restore the original location name",
+      "item": [
+        {
+          "name": "01 Maker restores the name in a new draft",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('restore_after_test') !== 'true') { pm.execution.skipRequest(); }",
+                  "const unit = JSON.parse(pm.variables.get('geo_unit'));",
+                  "const payload = {units: [{unit_id: unit.unit_id, level_id: unit.level_id, name: pm.variables.get('geo_original_name'), parent_unit_id: unit.parent_unit_id}]};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Draft is open', () => pm.expect(payload?.draft?.status).to.eql('DRAFT'));",
+                  "pm.variables.set('geo_restore_version', String(payload?.draft?.version_no || ''));",
+                  "pm.collectionVariables.set('geo_restore_version', String(payload?.draft?.version_no || ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/upsert_draft_units",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "upsert_draft_units"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "02 Maker submits the restore",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('restore_after_test') !== 'true') { pm.execution.skipRequest(); }",
+                  "const payload = {change_note: 'Postman MDS test: restore name of ' + pm.variables.get('geo_unit_id')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Restore is submitted', () => pm.expect(payload?.draft?.status).to.eql('SUBMITTED'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/submit_geo_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "submit_geo_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03 Checker approves the restore",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('checker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('restore_after_test') !== 'true') { pm.execution.skipRequest(); }",
+                  "const payload = {version_no: Number(pm.variables.get('geo_restore_version')), decision_note: 'Restore approved by Postman MDS test'};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Restore is published', () => pm.expect(payload?.draft?.status).to.eql('PUBLISHED'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{checker_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/approve_geo_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "approve_geo_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04 Published data shows the original name again",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('geo_writes_ok') !== 'true') { console.warn('Skipped: geography change flow is not cleared to run (see 03 Read).'); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('restore_after_test') !== 'true') { pm.execution.skipRequest(); }",
+                  "const payload = {version: 'latest', unit_id: pm.variables.get('geo_unit_id')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Original name is back', () => pm.expect(payload?.unit?.name).to.eql(pm.variables.get('geo_original_name')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_unit",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_unit"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Runs the same maker-checker flow again with the original name so the test leaves the published name as it was. It creates one more published version. Set restore_after_test=false to keep the test name."
+    },
+    {
+      "name": "06 Change a dataset value and approve it",
+      "item": [
+        {
+          "name": "01 Maker changes a value's display name in a draft",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "const v = JSON.parse(pm.variables.get('ds_value'));",
+                  "const value = {value_code: v.value_code, display: pm.variables.get('ds_new_display'), sort_order: v.sort_order, attributes: v.attributes || undefined, roles: v.roles || undefined, display_i18n: v.display_i18n || undefined};",
+                  "if (v.parent_code) value.parent_code = v.parent_code;",
+                  "const payload = {list_code: pm.variables.get('ds_list_code'), values: [value]};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Draft is open', () => pm.expect(payload?.draft?.status).to.eql('DRAFT'));",
+                  "pm.variables.set('ds_draft_version', String(payload?.draft?.version_no || ''));",
+                  "pm.collectionVariables.set('ds_draft_version', String(payload?.draft?.version_no || ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/upsert_draft_values",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "upsert_draft_values"
+              ]
+            },
+            "description": "Only the display name changes. Published codes are immutable."
+          },
+          "response": []
+        },
+        {
+          "name": "02 Review the draft against the published version",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "const payload = {list_code: pm.variables.get('ds_list_code'), to_version: 'draft'};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const code = JSON.parse(pm.variables.get('ds_value')).value_code;",
+                  "pm.test('Diff shows exactly the changed value', () => pm.expect((payload?.changed || []).map(c => c.value_code)).to.eql([code]));",
+                  "pm.test('Nothing added or retired', () => { pm.expect(payload?.added || []).to.be.empty; pm.expect(payload?.retired || []).to.be.empty; });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_list_diff",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_list_diff"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03 Maker submits the draft",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "const payload = {list_code: pm.variables.get('ds_list_code'), change_note: 'Postman MDS test: display name change'};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Draft is submitted', () => pm.expect(payload?.draft?.status).to.eql('SUBMITTED'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/submit_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "submit_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04 Negative: maker cannot approve their own change",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "const payload = {list_code: pm.variables.get('ds_list_code'), version_no: Number(pm.variables.get('ds_draft_version'))};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let r = {}; try { r = pm.response.json(); } catch (_) {} const h = r.response_header || {};",
+                  "pm.test('Refused with G2P-CAT-403', () => pm.expect(h.response_error_code || r.errors?.[0]?.code || String(pm.response.code), h.response_error_message || '').to.eql('G2P-CAT-403'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/approve_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "approve_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "05 Checker approves the change",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('checker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "const payload = {list_code: pm.variables.get('ds_list_code'), version_no: Number(pm.variables.get('ds_draft_version')), decision_note: 'Approved by Postman MDS test'};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Version is published', () => pm.expect(payload?.draft?.status).to.eql('PUBLISHED'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{checker_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/approve_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "approve_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06 Published value shows the new display name",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "const payload = {version: 'latest', list_code: pm.variables.get('ds_list_code'), value_code: JSON.parse(pm.variables.get('ds_value')).value_code};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Latest version is the approved one', () => pm.expect(String(payload?.version?.version_no)).to.eql(pm.variables.get('ds_draft_version')));",
+                  "pm.test('Display name is updated', () => pm.expect(payload?.value?.display).to.eql(pm.variables.get('ds_new_display')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_list_value",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_list_value"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "07 Legacy attributes API shows the new display name",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "if (!pm.variables.get('ds_attribute_id')) pm.execution.skipRequest();",
+                  "const payload = {attribute_id: pm.variables.get('ds_attribute_id')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const code = JSON.parse(pm.variables.get('ds_value')).value_code;",
+                  "const row = (payload?.attribute_values || []).find(v => v.value_code === code);",
+                  "pm.test('Registries see the new display name', () => pm.expect(row?.value_display).to.eql(pm.variables.get('ds_new_display')));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/attributes/get_attribute_values",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "attributes",
+                "get_attribute_values"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "08 Version history lists the approval",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "const payload = {list_code: pm.variables.get('ds_list_code')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const v = (payload?.versions || []).find(x => String(x.version_no) === pm.variables.get('ds_draft_version'));",
+                  "pm.test('Approved version is in the history with its decision', () => { pm.expect(v?.status).to.eql('PUBLISHED'); pm.expect(v?.decided_by_name || v?.decided_by).to.be.ok; });"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_list_versions",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_list_versions"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Same maker-checker flow for reference data: the maker changes the display name of one value, the checker approves, and the new display name is confirmed in the catalogue and the legacy attributes API. Set run_dataset_flow=false to skip."
+    },
+    {
+      "name": "07 Restore the original dataset value",
+      "item": [
+        {
+          "name": "01 Maker restores the display name in a new draft",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('restore_after_test') !== 'true') { pm.execution.skipRequest(); }",
+                  "pm.variables.set('ds_original_display', JSON.parse(pm.variables.get('ds_value')).display);",
+                  "const v = JSON.parse(pm.variables.get('ds_value'));",
+                  "const value = {value_code: v.value_code, display: pm.variables.get('ds_original_display'), sort_order: v.sort_order, attributes: v.attributes || undefined, roles: v.roles || undefined, display_i18n: v.display_i18n || undefined};",
+                  "if (v.parent_code) value.parent_code = v.parent_code;",
+                  "const payload = {list_code: pm.variables.get('ds_list_code'), values: [value]};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Draft is open', () => pm.expect(payload?.draft?.status).to.eql('DRAFT'));",
+                  "pm.variables.set('ds_restore_version', String(payload?.draft?.version_no || ''));",
+                  "pm.collectionVariables.set('ds_restore_version', String(payload?.draft?.version_no || ''));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/upsert_draft_values",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "upsert_draft_values"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "02 Maker submits the restore",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('restore_after_test') !== 'true') { pm.execution.skipRequest(); }",
+                  "const payload = {list_code: pm.variables.get('ds_list_code'), change_note: 'Postman MDS test: restore display name'};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Restore is submitted', () => pm.expect(payload?.draft?.status).to.eql('SUBMITTED'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/submit_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "submit_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03 Checker approves the restore",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('checker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('restore_after_test') !== 'true') { pm.execution.skipRequest(); }",
+                  "const payload = {list_code: pm.variables.get('ds_list_code'), version_no: Number(pm.variables.get('ds_restore_version')), decision_note: 'Restore approved by Postman MDS test'};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Restore is published', () => pm.expect(payload?.draft?.status).to.eql('PUBLISHED'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{checker_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/approve_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "approve_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04 Published value shows the original display name again",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('run_dataset_flow') !== 'true' || pm.variables.get('ds_writes_ok') !== 'true') { console.warn('Skipped: dataset change flow is off or not cleared to run.'); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('restore_after_test') !== 'true') { pm.execution.skipRequest(); }",
+                  "const payload = {version: 'latest', list_code: pm.variables.get('ds_list_code'), value_code: JSON.parse(pm.variables.get('ds_value')).value_code};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Original display name is back', () => pm.expect(payload?.value?.display).to.eql(JSON.parse(pm.variables.get('ds_value')).display));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_list_value",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_list_value"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Puts the original display name back through the same maker-checker flow."
+    },
+    {
+      "name": "08 Clean up a stuck test draft (run manually)",
+      "item": [
+        {
+          "name": "01 Check this run's geography draft",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "const payload = {};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const mine = [pm.collectionVariables.get('geo_draft_version'), pm.collectionVariables.get('geo_restore_version')].filter(Boolean);",
+                  "const open = (payload?.versions || []).find(v => ['DRAFT', 'SUBMITTED'].includes(v.status));",
+                  "pm.variables.set('discard_geo', String(!!open && mine.includes(String(open.version_no))));",
+                  "pm.test('Any open geography draft belongs to this collection', () => pm.expect(!open || mine.includes(String(open.version_no)), 'Open draft ' + (open && open.version_no) + ' was not opened by this collection').to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_geo_versions",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_geo_versions"
+              ]
+            },
+            "description": "Checks which geography draft is open."
+          },
+          "response": []
+        },
+        {
+          "name": "02 Discard geography draft",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('discard_geo') !== 'true') pm.execution.skipRequest();",
+                  "const payload = {};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Draft discarded', () => pm.expect(payload?.discarded_version_no).to.be.a('number'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/discard_geo_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "discard_geo_draft"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03 Check this run's dataset draft",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (!pm.collectionVariables.get('ds_list_code')) pm.execution.skipRequest();",
+                  "const payload = {list_code: pm.collectionVariables.get('ds_list_code')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "const mine = [pm.collectionVariables.get('ds_draft_version'), pm.collectionVariables.get('ds_restore_version')].filter(Boolean);",
+                  "const open = (payload?.versions || []).find(v => ['DRAFT', 'SUBMITTED'].includes(v.status));",
+                  "pm.variables.set('discard_ds', String(!!open && mine.includes(String(open.version_no))));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/get_list_versions",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "get_list_versions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04 Discard dataset draft",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.variables.get('maker_token')) { pm.execution.setNextRequest(null); pm.execution.skipRequest(); }",
+                  "if (pm.variables.get('discard_ds') !== 'true') pm.execution.skipRequest();",
+                  "const payload = {list_code: pm.collectionVariables.get('ds_list_code')};",
+                  "pm.variables.set('payload_json', JSON.stringify(payload));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const payload = pm.response.json().response_body?.response_payload;",
+                  "pm.test('Draft discarded', () => pm.expect(payload?.discarded_version_no).to.be.a('number'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mds_body}}"
+            },
+            "url": {
+              "raw": "{{master_data_url}}/catalogue/discard_draft",
+              "host": [
+                "{{master_data_url}}"
+              ],
+              "path": [
+                "catalogue",
+                "discard_draft"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Only for a run that stopped half-way. Run folder 01 and this folder together in the Collection Runner. Discards a geography or dataset draft only when it is the one this collection opened and it is still DRAFT or SUBMITTED. It never touches a draft someone else opened. Not part of a normal run."
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{maker_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// Request header for every Master Data call; each request sets payload_json and may raise page_size.",
+          "pm.variables.set('mds_header', JSON.stringify({sender_app_mnemonic: 'OAN_MDS_API_TEST', sender_app_url: '', request_id: pm.variables.replaceIn('{{$guid}}'), request_timestamp: new Date().toISOString()}));",
+          "pm.variables.set('page_size', '100');",
+          "// Body template shared by every Master Data call; Postman fills the nested variables when the request is sent.",
+          "pm.variables.set('mds_body', '{\"request_header\":{{mds_header}},\"request_body\":{\"request_payload\":{{payload_json}},\"pagination_request\":{\"current_page\":1,\"page_size\":{{page_size}}}}}');"
+        ],
+        "type": "text/javascript"
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "exec": [
+          "// Shared check for every Master Data call that should succeed. Negative tests check their own error code.",
+          "if (pm.request.method === 'POST' && /^\\/(catalogue|geo|attributes)\\//.test(pm.request.url.getPath()) && !pm.info.requestName.includes('Negative')) {",
+          "    let r = {}; try { r = pm.response.json(); } catch (_) {}",
+          "    const h = r.response_header || {};",
+          "    pm.test('HTTP 200 and business SUCCESS', () => { pm.response.to.have.status(200); pm.expect(h.response_status, (h.response_error_code || '') + ' ' + (h.response_error_message || JSON.stringify(r.errors || ''))).to.eql('SUCCESS'); });",
+          "    if (pm.response.code !== 200 || h.response_status !== 'SUCCESS') { pm.execution.setNextRequest(null); console.error('Stopped at ' + pm.info.requestName + ': ' + (h.response_error_code || pm.response.code) + ' ' + (h.response_error_message || '')); }",
+          "}"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "enable_writes",
+      "value": "true"
+    },
+    {
+      "key": "restore_after_test",
+      "value": "true"
+    },
+    {
+      "key": "run_dataset_flow",
+      "value": "true"
+    },
+    {
+      "key": "ds_list_code",
+      "value": ""
+    },
+    {
+      "key": "geo_draft_version",
+      "value": ""
+    },
+    {
+      "key": "geo_restore_version",
+      "value": ""
+    },
+    {
+      "key": "ds_draft_version",
+      "value": ""
+    },
+    {
+      "key": "ds_restore_version",
+      "value": ""
+    }
+  ]
+}

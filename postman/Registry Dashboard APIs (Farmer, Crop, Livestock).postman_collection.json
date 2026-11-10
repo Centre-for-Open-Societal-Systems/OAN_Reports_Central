@@ -1,0 +1,2048 @@
+{
+  "info": {
+    "_postman_id": "42c0e25f-3b4c-4dc3-a638-7ecead8fb6fe",
+    "name": "Registry Dashboard APIs (Farmer, Crop, Livestock)",
+    "description": "Read-only aggregate chart APIs of the Farmer, Crop Sown and Livestock registries (GET <base>/api/v1/charts/<chartId> returns a JSON array of rows).\n\nOne collection, many environments: pick an environment (New Dev, Staging, Local) and everything resolves from variables. Nothing is hardcoded and no credentials are stored in the collection.\n\nAuth: when the environment sets keycloakTokenUrl, clientId and clientSecret, the collection pre-request script gets a client-credentials token (cached until it expires) and sends it as Authorization: Bearer. The client needs the role charts:read on each API's client (farmer/cropsown/livestock-registry-dashboard-api). Leave clientId empty for a service running with auth off (local). /health needs no token.\n\nFilters (optional, empty means none; combined with AND): region, zone, woreda, kebele (codes, bare or level id), farmingType, recordState. Set them in the environment or collection variables.\n\nCategorical values are codes (FEMALE, UNDER_25, ...). Rows are aggregates only.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "57831899",
+    "_collection_link": "https://go.postman.co/collection/49316197-42c0e25f-3b4c-4dc3-a638-7ecead8fb6fe?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Farmer",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/health",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmerKpis",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmerKpis?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmerKpis"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            },
+            "description": "Headline totals: farmers, gender split, land, owned land, farmer IDs."
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByRegion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByRegion?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByRegion"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByZone",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByZone?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByZone"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByWoreda",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByWoreda?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByWoreda"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByKebele",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByKebele?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByKebele"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByFarmerId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByFarmerId?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByFarmerId"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByGender",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByGender?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByGender"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByType",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByType?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByType"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByAgeAndGender",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByAgeAndGender?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByAgeAndGender"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByEducation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByEducation?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByEducation"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "farmersByRecordState",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/farmersByRecordState?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "farmersByRecordState"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "landTenureSplit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/landTenureSplit?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "landTenureSplit"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "registryTrendByMonth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/registryTrendByMonth?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "registryTrendByMonth"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "registryCoverage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{farmerBaseUrl}}/api/v1/charts/registryCoverage?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{farmerBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "registryCoverage"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Crop Sown",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/health",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropKpis",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropKpis?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropKpis"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropAreaByCrop",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropAreaByCrop?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropAreaByCrop"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropAreaByRegion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropAreaByRegion?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropAreaByRegion"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropAreaByZone",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropAreaByZone?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropAreaByZone"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropAreaByWoreda",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropAreaByWoreda?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropAreaByWoreda"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropAreaByKebele",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropAreaByKebele?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropAreaByKebele"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropTopWoredas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropTopWoredas?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropTopWoredas"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropLandTenureSplit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropLandTenureSplit?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropLandTenureSplit"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropBySeason",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropBySeason?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropBySeason"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropTrendByMonth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropTrendByMonth?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropTrendByMonth"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropByStatus",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropByStatus?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropByStatus"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropByLifecycleStage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropByLifecycleStage?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropByLifecycleStage"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "cropByRecordState",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{cropBaseUrl}}/api/v1/charts/cropByRecordState?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{cropBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "cropByRecordState"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Livestock",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/health",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockKpis",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockKpis?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockKpis"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockBySpecies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockBySpecies?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockBySpecies"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockByBreed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockByBreed?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockByBreed"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockKeepersByRegion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockKeepersByRegion?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockKeepersByRegion"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockKeepersByZone",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockKeepersByZone?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockKeepersByZone"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockKeepersByWoreda",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockKeepersByWoreda?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockKeepersByWoreda"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockKeepersByKebele",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockKeepersByKebele?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockKeepersByKebele"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockTopWoredas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockTopWoredas?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockTopWoredas"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "herdHealthSplit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/herdHealthSplit?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "herdHealthSplit"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockVaccinationStatus",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockVaccinationStatus?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockVaccinationStatus"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockBySex",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockBySex?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockBySex"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockTrendByMonth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockTrendByMonth?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockTrendByMonth"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockByState",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockByState?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockByState"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "livestockByRecordState",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{livestockBaseUrl}}/api/v1/charts/livestockByRecordState?region={{region}}&zone={{zone}}&woreda={{woreda}}&kebele={{kebele}}&farmingType={{farmingType}}&recordState={{recordState}}",
+              "host": [
+                "{{livestockBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "charts",
+                "livestockByRecordState"
+              ],
+              "query": [
+                {
+                  "key": "region",
+                  "value": "{{region}}"
+                },
+                {
+                  "key": "zone",
+                  "value": "{{zone}}"
+                },
+                {
+                  "key": "woreda",
+                  "value": "{{woreda}}"
+                },
+                {
+                  "key": "kebele",
+                  "value": "{{kebele}}"
+                },
+                {
+                  "key": "farmingType",
+                  "value": "{{farmingType}}"
+                },
+                {
+                  "key": "recordState",
+                  "value": "{{recordState}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Client-credentials token from Keycloak, cached until shortly before it expires.",
+          "const clientId = pm.variables.get('clientId');",
+          "if (!clientId || pm.request.url.getPath() === '/health') return;",
+          "const exp = Number(pm.collectionVariables.get('_tokenExp') || 0);",
+          "if (pm.collectionVariables.get('_token') && Date.now() < exp - 15000) { pm.request.headers.upsert({key:'Authorization', value:'Bearer ' + pm.collectionVariables.get('_token')}); return; }",
+          "pm.sendRequest({url: pm.variables.get('keycloakTokenUrl'), method: 'POST', header: {'Content-Type':'application/x-www-form-urlencoded'}, body: {mode:'urlencoded', urlencoded:[{key:'grant_type',value:'client_credentials'},{key:'client_id',value:clientId},{key:'client_secret',value:pm.variables.get('clientSecret')}]}}, (err, res) => {",
+          "  if (err || res.code !== 200) { throw new Error('Keycloak token request failed: ' + (err || res.code)); }",
+          "  const j = res.json();",
+          "  pm.collectionVariables.set('_token', j.access_token);",
+          "  pm.collectionVariables.set('_tokenExp', String(Date.now() + j.expires_in * 1000));",
+          "  pm.request.headers.upsert({key:'Authorization', value:'Bearer ' + j.access_token});",
+          "});"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('status is 200', () => pm.response.to.have.status(200));",
+          "if (pm.request.url.getPath() === '/health') { pm.test('health ok', () => pm.expect(pm.response.json().status).to.eql('ok')); }",
+          "else { pm.test('body is an array', () => pm.expect(pm.response.json()).to.be.an('array')); }"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "region",
+      "value": ""
+    },
+    {
+      "key": "zone",
+      "value": ""
+    },
+    {
+      "key": "woreda",
+      "value": ""
+    },
+    {
+      "key": "kebele",
+      "value": ""
+    },
+    {
+      "key": "farmingType",
+      "value": ""
+    },
+    {
+      "key": "recordState",
+      "value": ""
+    },
+    {
+      "key": "clientId",
+      "value": ""
+    },
+    {
+      "key": "clientSecret",
+      "value": ""
+    },
+    {
+      "key": "keycloakTokenUrl",
+      "value": ""
+    },
+    {
+      "key": "farmerBaseUrl",
+      "value": "http://localhost:8005"
+    },
+    {
+      "key": "cropBaseUrl",
+      "value": "http://localhost:8015"
+    },
+    {
+      "key": "livestockBaseUrl",
+      "value": "http://localhost:8025"
+    }
+  ]
+}

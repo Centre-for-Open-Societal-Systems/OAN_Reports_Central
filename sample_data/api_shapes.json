@@ -1,0 +1,354 @@
+{
+  "_meta": {
+    "generated_from": [
+      "A2C Dashboard Service.postman_collection.json",
+      "Grievance Dashboard Service.postman_collection.json",
+      "OAN Dashboards (dev).postman_collection.json",
+      "Registry Dashboard APIs (Farmer, Crop, Livestock).postman_collection.json",
+      "OAN Registry Dashboards (randomized E2E).postman_collection.json"
+    ],
+    "notes": [
+      "No collection contains saved response examples.",
+      "Registry and A2C fields come from explicit Postman test assertions.",
+      "Grievance collections assert only the success envelope; grievance row fields are inferred from endpoint names and descriptions."
+    ],
+    "direct_registry_response": [
+      {
+        "<field>": "<value>"
+      }
+    ],
+    "gateway_registry_response": {
+      "success": true,
+      "data": {
+        "<chartId>": {
+          "chartName": "<string>",
+          "success": true,
+          "data": [
+            {
+              "<field>": "<value>"
+            }
+          ],
+          "error": null,
+          "executionTime": 12
+        }
+      },
+      "errors": [],
+      "summary": {
+        "total": 1,
+        "successful": 1,
+        "failed": 0
+      }
+    },
+    "a2c_and_grievance_response": {
+      "status": "success",
+      "data": [
+        {
+          "<field>": "<value>"
+        }
+      ],
+      "meta": {
+        "as_of": "2026-11-10T06:00:00Z"
+      }
+    }
+  },
+  "farmer_registry": {
+    "farmerKpis": {
+      "confidence": "asserted",
+      "example_row": {
+        "total_farmers": 128450,
+        "female_farmers": 48320,
+        "male_farmers": 80130,
+        "total_land_size": 214875.5,
+        "avg_farm_size": 1.67,
+        "farmers_with_owned_land": 103240,
+        "household_heads": 110680,
+        "farmers_with_id": 117900,
+        "farmers_without_id": 10550
+      }
+    },
+    "farmersByRegion": {
+      "confidence": "asserted",
+      "example_row": {"region": "Oromia", "region_code": "ET04", "farmers": 42180}
+    },
+    "farmersByZone": {
+      "confidence": "asserted",
+      "example_row": {"zone": "Arsi", "zone_code": "ET0401", "farmers": 12450}
+    },
+    "farmersByWoreda": {
+      "confidence": "asserted",
+      "example_row": {"woreda": "Lemu Bilbilo", "woreda_code": "ET040101", "farmers": 3840}
+    },
+    "farmersByKebele": {
+      "confidence": "asserted",
+      "example_row": {"kebele": "Bekoji 01", "kebele_code": "ET0401010001", "farmers": 620}
+    },
+    "farmersByFarmerId": {
+      "confidence": "asserted",
+      "example_row": {"id_status": "WITH_ID", "farmers": 117900}
+    },
+    "farmersByGender": {
+      "confidence": "asserted",
+      "example_row": {"gender": "FEMALE", "farmers": 48320}
+    },
+    "farmersByType": {
+      "confidence": "asserted",
+      "example_row": {"farming_type": "MIXED", "farmers": 73500}
+    },
+    "farmersByAgeAndGender": {
+      "confidence": "asserted",
+      "example_row": {"age_group": "35_44", "gender": "FEMALE", "farmers": 13240}
+    },
+    "farmersByEducation": {
+      "confidence": "asserted",
+      "example_row": {"education": "PRIMARY", "farmers": 42700}
+    },
+    "farmersByRecordState": {
+      "confidence": "asserted",
+      "example_row": {"record_state": "ACTIVE", "farmers": 119800}
+    },
+    "landTenureSplit": {
+      "confidence": "asserted",
+      "example_row": {"ownership_type": "OWNED", "parcels": 142300, "area": 176420.5}
+    },
+    "registryTrendByMonth": {
+      "confidence": "asserted",
+      "example_row": {"period": "2026-10", "farmers": 9840, "total_area": 16120.4, "owned_area": 13280.2}
+    },
+    "registryCoverage": {
+      "confidence": "asserted",
+      "example_row": {"regions_covered": 12, "zones_covered": 68, "woredas_covered": 412, "kebeles_covered": 3850}
+    }
+  },
+  "livestock": {
+    "livestockKpis": {
+      "confidence": "asserted",
+      "example_row": {"holdings": 86420, "keepers": 79350, "female_keepers": 28670, "woredas_reporting": 368, "animals": 642800, "species_tracked": 6, "breeds_tracked": 14}
+    },
+    "livestockBySpecies": {
+      "confidence": "asserted",
+      "example_row": {"species": "Cattle", "species_code": "CATTLE", "animals": 318400, "keepers": 68120}
+    },
+    "livestockByBreed": {
+      "confidence": "asserted",
+      "example_row": {"breed": "Horro", "breed_code": "HORRO", "species": "Cattle", "animals": 82400}
+    },
+    "livestockKeepersByRegion": {
+      "confidence": "asserted",
+      "example_row": {"region": "Oromia", "region_code": "ET04", "farmers": 26800, "animals": 224600}
+    },
+    "livestockKeepersByZone": {
+      "confidence": "asserted",
+      "example_row": {"zone": "Arsi", "zone_code": "ET0401", "farmers": 8200, "animals": 68400}
+    },
+    "livestockKeepersByWoreda": {
+      "confidence": "asserted",
+      "example_row": {"woreda": "Lemu Bilbilo", "woreda_code": "ET040101", "farmers": 2410, "animals": 19680}
+    },
+    "livestockKeepersByKebele": {
+      "confidence": "asserted",
+      "example_row": {"kebele": "Bekoji 01", "kebele_code": "ET0401010001", "farmers": 390, "animals": 3120}
+    },
+    "livestockTopWoredas": {
+      "confidence": "asserted",
+      "example_row": {"woreda": "Ada'a", "woreda_code": "ET040203", "farmers": 4280, "animals": 38600}
+    },
+    "herdHealthSplit": {
+      "confidence": "asserted",
+      "example_row": {"health_status": "HEALTHY", "animals": 521700}
+    },
+    "livestockVaccinationStatus": {
+      "confidence": "asserted",
+      "example_row": {"vaccination_status": "VACCINATED", "animals": 438900}
+    },
+    "livestockBySex": {
+      "confidence": "asserted",
+      "example_row": {"sex": "FEMALE", "animals": 372800}
+    },
+    "livestockTrendByMonth": {
+      "confidence": "asserted",
+      "example_row": {"period": "2026-10", "farmers": 6120, "holdings": 6740, "animals": 49800}
+    },
+    "livestockByState": {
+      "confidence": "asserted",
+      "example_row": {"state": "ACTIVE", "holdings": 81200}
+    },
+    "livestockByRecordState": {
+      "confidence": "asserted",
+      "example_row": {"record_state": "ACTIVE", "holdings": 81200}
+    }
+  },
+  "crop_sown": {
+    "cropKpis": {
+      "confidence": "asserted",
+      "example_row": {"total_area": 386420.75, "owned_area": 312880.5, "farmers": 101240, "registrations": 174300, "crop_types": 6, "woredas_reporting": 356, "avg_plot_size": 2.22}
+    },
+    "cropAreaByCrop": {
+      "confidence": "asserted",
+      "example_row": {"crop": "Teff", "crop_code": "TEFF", "area": 108420.5, "farmers": 48200}
+    },
+    "cropAreaByRegion": {
+      "confidence": "asserted",
+      "note": "The field named farmers contains area; farmer_count is the head count.",
+      "example_row": {"region": "Oromia", "region_code": "ET04", "farmers": 132480.5, "farmer_count": 34200}
+    },
+    "cropAreaByZone": {
+      "confidence": "asserted",
+      "note": "The field named farmers contains area; farmer_count is the head count.",
+      "example_row": {"zone": "Arsi", "zone_code": "ET0401", "farmers": 42800.25, "farmer_count": 11240}
+    },
+    "cropAreaByWoreda": {
+      "confidence": "asserted",
+      "note": "The field named farmers contains area; farmer_count is the head count.",
+      "example_row": {"woreda": "Lemu Bilbilo", "woreda_code": "ET040101", "farmers": 12480.75, "farmer_count": 3280}
+    },
+    "cropAreaByKebele": {
+      "confidence": "asserted",
+      "note": "The field named farmers contains area; farmer_count is the head count.",
+      "example_row": {"kebele": "Bekoji 01", "kebele_code": "ET0401010001", "farmers": 1980.5, "farmer_count": 520}
+    },
+    "cropTopWoredas": {
+      "confidence": "asserted",
+      "example_row": {"woreda": "Lemu Bilbilo", "woreda_code": "ET040101", "area": 12480.75, "farmers": 3280}
+    },
+    "cropLandTenureSplit": {
+      "confidence": "asserted",
+      "example_row": {"ownership_type": "Owned", "ownership_type_code": "OWNED", "parcels": 129800, "area": 312880.5}
+    },
+    "cropBySeason": {
+      "confidence": "asserted",
+      "example_row": {"season": "Meher", "season_code": "MEHER", "area": 301400.25, "farmers": 82300}
+    },
+    "cropTrendByMonth": {
+      "confidence": "asserted",
+      "example_row": {"period": "2026-10", "farmers": 7580, "total_area": 28420.5, "owned_area": 23180.25}
+    },
+    "cropByStatus": {
+      "confidence": "asserted",
+      "example_row": {"status": "SOWN", "registrations": 132600}
+    },
+    "cropByLifecycleStage": {
+      "confidence": "asserted",
+      "example_row": {"lifecycle_stage": "GROWING", "registrations": 94800}
+    },
+    "cropByRecordState": {
+      "confidence": "asserted",
+      "example_row": {"record_state": "ACTIVE", "registrations": 166900}
+    }
+  },
+  "a2c": {
+    "a2cKpis": {
+      "confidence": "asserted",
+      "example_row": {"providers_onboarded": 7, "providers_onboarding": 3, "providers_total": 10, "consent_requests": 18420, "consents_approved": 15180, "consents_pending": 2140, "consents_declined": 1100, "applications_total": 12680, "applications_in_progress": 2640, "loans_approved": 7840, "loans_declined": 1380, "loans_pending": 820, "data_shares_total": 16840, "data_shares_delivered": 15820, "data_shares_failed": 420, "data_shares_pending": 600, "records_shared": 284500, "loan_value_approved": 486200000, "loan_value_requested": 712500000, "farmers_enrolled": 22400}
+    },
+    "a2cProviders": {
+      "confidence": "asserted",
+      "example_row": {"short_name": "CBE", "name": "Commercial Bank of Ethiopia", "provider_type": "BANK", "status": "ONBOARDED", "integration": "LIVE", "onboarded_on": "2026-03-15", "consent_requests": 6820, "consents_approved": 5740, "applications": 4620, "loans_approved": 3010, "loan_value": 188600000, "share_faults": 74}
+    },
+    "a2cLoansByRegion": {
+      "confidence": "asserted",
+      "example_row": {"region": "Oromia", "farmers": 6820}
+    },
+    "a2cLoansByWoreda": {
+      "confidence": "asserted",
+      "example_row": {"region": "Sidama", "woreda": "Dale", "farmers": 1280}
+    },
+    "a2cLocationSummary": {
+      "confidence": "asserted",
+      "example_row": {"region": "Sidama", "woreda": "Dale", "farmers": 1850, "applications": 1420, "loans_approved": 910, "applications_in_progress": 280, "loans_pending": 95, "loans_declined": 135, "loan_value": 56200000}
+    },
+    "a2cApplicationStatus": {
+      "confidence": "asserted",
+      "example_row": {"status": "APPROVED", "applications": 7840, "requested_value": 472800000, "approved_value": 486200000}
+    },
+    "a2cConsentStatus": {
+      "confidence": "asserted",
+      "example_row": {"status": "APPROVED", "requests": 15180}
+    },
+    "a2cLoanProducts": {
+      "confidence": "asserted",
+      "example_row": {"product": "Seasonal Input Loan", "applications": 5320, "loans_approved": 3480, "loan_value": 214500000}
+    },
+    "a2cLoanTrend": {
+      "confidence": "asserted",
+      "example_row": {"month": "Oct 2026", "month_start": "2026-10-01", "applications": 1980, "loans_approved": 1260, "loan_value": 78600000}
+    },
+    "a2cDataShares": {
+      "confidence": "asserted",
+      "example_row": {"dataset": "Farmer Registry", "shares": 8240, "delivered": 7860, "failed": 160, "pending": 220, "records": 138400}
+    },
+    "a2cDataShareFaults": {
+      "confidence": "asserted",
+      "example_row": {"fault": "PROVIDER_TIMEOUT", "provider": "CBE", "dataset": "Farmer Registry", "records": 128, "last_seen": "2026-11-10T05:42:00Z"}
+    },
+    "a2cDeclineReasons": {
+      "confidence": "asserted",
+      "example_row": {"reason": "INSUFFICIENT_CREDIT_HISTORY", "applications": 520, "requested_value": 28400000}
+    },
+    "a2cFilterProviders": {
+      "confidence": "asserted",
+      "example_row": {"id": "PB-2815", "short_name": "CBE", "name": "Commercial Bank of Ethiopia", "status": "ONBOARDED", "applications": 4620}
+    },
+    "a2cFilterLocations": {
+      "confidence": "asserted",
+      "example_row": {"region_name": "Sidama", "woreda_name": "Dale", "farmers": 1850}
+    }
+  },
+  "grievance": {
+    "grvKpis": {
+      "confidence": "inferred_from_description",
+      "example_row": {"total_grievances": 248, "total_change_pct": 8.3, "awaiting_action": 61, "new_this_week": 14, "resolved": 163, "resolved_this_week": 28, "escalated": 9}
+    },
+    "grvPerformanceKpis": {
+      "confidence": "inferred_from_description",
+      "example_row": {"avg_resolution_days": 4.2, "avg_resolution_days_change": -0.6, "resolution_rate": 65.7, "resolution_rate_change": 3.4, "escalation_rate": 3.6, "escalation_rate_change": -0.8, "farmer_satisfaction": 4.3, "farmer_satisfaction_change": 0.2}
+    },
+    "grvMonthlyTrend": {
+      "confidence": "inferred_from_description",
+      "example_row": {"month": "Nov 2026", "month_start": "2026-11-01", "submitted": 38, "resolved": 31}
+    },
+    "grvWeeklyTrend": {
+      "confidence": "inferred_from_description",
+      "example_row": {"week": "2026-W45", "week_start": "2026-11-02", "submitted": 14, "resolved": 12}
+    },
+    "grvNetBacklogTrend": {
+      "confidence": "inferred_from_description",
+      "example_row": {"period": "2026-11", "filed": 38, "resolved": 31, "backlog": 61}
+    },
+    "grvStatusDistribution": {
+      "confidence": "inferred_from_description",
+      "example_row": {"status": "IN_PROGRESS", "grievances": 32}
+    },
+    "grvByCategory": {
+      "confidence": "inferred_from_description",
+      "example_row": {"category": "Inputs", "grievances": 74}
+    },
+    "grvCategoryResolution": {
+      "confidence": "inferred_from_description",
+      "example_row": {"category": "Inputs", "filed": 74, "resolved": 51, "on_time": 43, "breached": 8}
+    },
+    "grvResolutionRateByRegion": {
+      "confidence": "inferred_from_description",
+      "example_row": {"region": "Oromia", "region_code": "ET04", "filed": 82, "resolved": 57, "resolution_rate": 69.5}
+    },
+    "grvSlaRisk": {
+      "confidence": "inferred_from_description",
+      "example_row": {"at_risk": 17, "breached": 11, "escalated": 9}
+    },
+    "grvPendingDuplicates": {
+      "confidence": "inferred_from_description",
+      "example_row": {"pending_duplicates": 6}
+    },
+    "grvOldestOpen": {
+      "confidence": "inferred_from_description",
+      "example_row": {"age_days": 27}
+    },
+    "grvFilterRegions": {
+      "confidence": "inferred_from_description",
+      "example_row": {"region_code": "ET04", "region": "Oromia", "grievances": 82}
+    },
+    "grvFilterCategories": {
+      "confidence": "inferred_from_description",
+      "example_row": {"category": "Inputs", "grievances": 74}
+    }
+  }
+}
