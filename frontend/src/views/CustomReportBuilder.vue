@@ -38,6 +38,10 @@ const blankForm = () => ({
   updatedAt: '',
   sourceType: 'api', // library | api | json
   rawSourceType: '',
+  chartKeys: [],
+  upstreamService: '',
+  isCustomized: false,
+  originalEndpoint: '',
   baseReportId: '',
   apiEndpoint: '',
   apiMethod: 'GET',
@@ -158,6 +162,25 @@ function applySuggestedMapping() {
   syncWidgetsFromMapping()
 }
 
+/** Edit mode: keep the saved mapping, only fill top-level gaps (from the first chart widget, then a suggestion). */
+function fillMissingMapping() {
+  const s = suggestMapping(arrayPaths.value)
+  const w = form.widgets.find((x) => x.type === 'chart') || form.widgets[0]
+  if (!form.dataPath) form.dataPath = s.dataPath
+  if (!form.labelField) form.labelField = w?.labelField || s.labelField
+  if (!form.valueFields.length) form.valueFields = w?.valueFields?.length ? [...w.valueFields] : s.valueFields
+  if (!form.valueField) form.valueField = w?.valueField || form.valueFields[0] || ''
+  if (!form.kpiFields.length) form.kpiFields = form.widgets.find((x) => x.type === 'kpis')?.kpiFields?.slice() || s.kpiFields
+  if (!form.columnFields.length) form.columnFields = form.widgets.find((x) => x.type === 'table')?.columnFields?.slice() || s.columnFields
+  syncWidgetsFromMapping()
+}
+
+/** Relative chart-proxy URLs need the upstream service to pick the right backend. */
+function withService(url) {
+  if (!form.upstreamService || /[?&]service=/.test(url) || !/^\/api\/v1\/charts\//.test(url)) return url
+  return `${url}${url.includes('?') ? '&' : '?'}service=${encodeURIComponent(form.upstreamService)}`
+}
+
 function syncWidgetsFromMapping() {
   for (const w of form.widgets) {
     if (!w.labelField) w.labelField = form.labelField
@@ -201,11 +224,11 @@ async function loadFromApi({ silent = false, keepMapping = false } = {}) {
   }
   fetchState.value = { loading: true, error: '', ok: false }
   try {
-    const { data } = await fetchJsonEndpoint(form.apiEndpoint.trim(), { method: form.apiMethod || 'GET' })
+    const { data } = await fetchJsonEndpoint(withService(form.apiEndpoint.trim()), { method: form.apiMethod || 'GET' })
     form.parsedData = data
     form.sampleJson = JSON.stringify(data, null, 2)
     jsonError.value = ''
-    if (keepMapping && form.labelField) syncWidgetsFromMapping()
+    if (keepMapping) fillMissingMapping()
     else applySuggestedMapping()
     ensureWidgets()
     fetchState.value = { loading: false, error: '', ok: true }
@@ -552,6 +575,10 @@ async function deleteThis() {
                 placeholder='{ "data": [ { "label": "…", "value": 1 } ] }'
               />
               <span v-if="jsonError" class="err">{{ jsonError }}</span>
+              <span class="hint">
+                The pasted JSON is stored with the report and used to map fields here. Whether the backend can render
+                a JSON-source report depends on its data-source support — API endpoints always work.
+              </span>
             </div>
             <div class="row row-wrap">
               <button type="button" class="btn btn-primary" @click="ingestJson(form.sampleJson)">

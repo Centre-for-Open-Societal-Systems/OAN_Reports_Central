@@ -13,6 +13,7 @@ import {
 } from '../api/reports'
 import { formToPayload } from '../api/mappers'
 import { clearPreview, reloadCatalog } from './useCatalog'
+import { getReport as getCatalogReport } from '../data/reports_catalog'
 
 /* ----------------------------------------------------------------- reports
  * Custom AND edited system reports live on the server. These helpers wrap the API
@@ -21,7 +22,8 @@ import { clearPreview, reloadCatalog } from './useCatalog'
 
 /** Create (no id) or PATCH (id) a report from the builder form model. Returns the saved report. */
 export async function saveReportForm(form) {
-  const payload = formToPayload(form)
+  const baseReport = form.sourceType === 'library' ? getCatalogReport(form.baseReportId) : undefined
+  const payload = formToPayload(form, { baseReport })
   const saved = form.id ? await updateReport(form.id, payload) : await createReport(payload)
   clearPreview(form.id || saved?.id)
   await reloadCatalog()

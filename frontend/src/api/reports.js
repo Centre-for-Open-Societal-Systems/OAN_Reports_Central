@@ -59,18 +59,16 @@ export async function saveSchedules(list) {
 
 /* ---------------------------------------------------------------- settings */
 
-/** GET /api/settings -> camelCase UI settings object */
+/** GET /api/settings -> { ui, map }; returns the `ui` preferences object. */
 export async function getSettings() {
   const res = await api.get('/api/settings')
-  const ui = res?.ui || res?.settings || res || {}
-  return mapKeys(ui, toCamel)
+  return res?.ui || res?.settings || {}
 }
 
-/** PUT /api/settings — wraps UI prefs under `{ ui }` for the backend bundle. */
+/** PUT /api/settings — sends `{ ui }` (map settings are left untouched). */
 export async function saveSettings(settings) {
-  const res = await api.put('/api/settings', { ui: mapKeys(settings, toSnake) })
-  const ui = res?.ui || res?.settings || settings
-  return mapKeys(ui, toCamel)
+  const res = await api.put('/api/settings', { ui: settings })
+  return res?.ui || settings
 }
 
 export const health = () => api.get('/api/health')

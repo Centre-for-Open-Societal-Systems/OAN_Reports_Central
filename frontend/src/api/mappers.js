@@ -88,6 +88,10 @@ export function reportToForm(r) {
     updatedAt: pick(r, 'updated_at', ''),
     sourceType,
     rawSourceType: pick(r, 'source_type', ''),
+    chartKeys: [...pick(r, 'chart_keys', [])],
+    upstreamService: pick(r, 'upstream_service', ''),
+    isCustomized: !!pick(r, 'is_customized', false),
+    originalEndpoint: pick(r, 'api_endpoint', ''),
     baseReportId: pick(r, 'base_report_id', '') || (sourceType === 'library' ? r.id : ''),
     apiEndpoint: pick(r, 'api_endpoint', ''),
     apiMethod: pick(r, 'api_method', 'GET'),
@@ -107,49 +111,77 @@ export function reportToForm(r) {
   }
 }
 
-/** Builder form model -> POST/PATCH payload. */
-export function formToPayload(form) {
-  // If the user did not change the source kind, send the backend's own value back untouched.
-  const keepRaw = form.rawSourceType && reportSourceKind({ source_type: form.rawSourceType, api_endpoint: form.apiEndpoint }) === form.sourceType
+/** Last path segment of an endpoint, e.g. `/api/v1/charts/grvByCategory?x=1` -> `grvByCategory`. */
+export function chartKeyFromEndpoint(endpoint = '') {
+  const path = String(endpoint).split('?')[0].replace(/\/+$/, '')
+  return path.split('/').pop() || ''
+}
+
+/**
+ * Builder form model -> POST/PATCH payload.
+ * `baseReport` (catalog entry) is required for "Library dataset" sources: the new report reuses its
+ * upstream chart definition and the widgets inherit its field mapping.
+ */
+export function formToPayload(form, { baseReport } = {}) {
+  const kind = form.sourceType
+  const keepRaw = form.rawSourceType && reportSourceKind({ source_type: form.rawSourceType, api_endpoint: form.apiEndpoint }) === kind
   const payload = {
     title: form.name.trim(),
     description: form.description || '',
     category: form.category,
-    source_type: keepRaw ? form.rawSourceType : form.sourceType,
-    chart_type: form.chartType,
-    sort: form.sort,
-    limit: form.limit,
-    stacked: !!form.stacked,
+    source_type: keepRaw ? form.rawSourceType : kind,
     widgets: form.widgets.map(widgetToApi),
   }
   if (form.tag) payload.tag = form.tag
   if (form.frequency) payload.frequency = form.frequency
 
-  Object.assign(payload, {
-    data_path: form.dataPath,
-    field_mapping: {
-      label_field: form.labelField,
-      value_fields: form.valueFields,
-      kpi_fields: form.kpiFields,
-      column_fields: form.columnFields,
-      value_field: form.valueField,
-      ...(form.sourceType === 'json' && form.sampleJson ? { sample_json: form.sampleJson } : {}),
-    },
-  })
-  if (form.sourceType === 'library') {
+  if (kind === 'library') {
+    // Reuse the base report's upstream chart; keep its original source kind so the backend can render it.
+    payload.source_type = baseReport?.source_type || 'upstream'
     payload.base_report_id = form.baseReportId || null
-    payload.source_type = 'upstream'
-  } else if (form.sourceType === 'api') {
-    payload.api_endpoint = form.apiEndpoint.trim()
-    payload.api_method = form.apiMethod || 'GET'
-    payload.source_type = form.rawSourceType === 'upstream' ? 'upstream' : 'api'
-  } else {
-    payload.source_type = 'json'
-    payload.api_endpoint = form.apiEndpoint || ''
+    if (baseReport) {
+      payload.chart_keys = baseReport.chart_keys || []
+      payload.upstream_service = baseReport.upstream_service || ''
+      payload.api_endpoint = baseReport.api_endpoint || ''
+      payload.api_method = baseReport.api_method || 'GET'
+      payload.data_path = baseReport.data_path || 'data'
+      payload.field_mapping = baseReport.field_mapping || {}
+      const baseChart = (baseReport.widgets || []).find((w) => w.type === 'chart' || !w.type)
+      if (baseChart) {
+        payload.widgets = payload.widgets.map((w) =>
+          w.type === 'chart' || !w.type
+            ? {
+                ...w,
+                label_field: w.label_field || baseChart.label_field || '',
+                value_fields: w.value_fields?.length ? w.value_fields : baseChart.value_fields || [],
+              }
+            : w,
+        )
+      }
+    }
+    return payload
   }
+
+  Object.assign(payload, {
+    data_path: form.dataPath || 'data',
+    api_method: form.apiMethod || 'GET',
+    api_endpoint: form.apiEndpoint.trim(),
+    upstream_service: form.upstreamService || '',
+    label_field: form.labelField,
+    value_fields: form.valueFields,
+    kpi_fields: form.kpiFields,
+    column_fields: form.columnFields,
+    value_field: form.valueField,
+  })
+  if (kind === 'json') payload.sample_json = form.sampleJson
+
+  // The backend renders a report by fetching its `chart_keys`; derive one from the endpoint when it changes.
+  const endpointChanged = form.apiEndpoint.trim() !== (form.originalEndpoint || '')
+  const derived = chartKeyFromEndpoint(form.apiEndpoint)
+  if (form.chartKeys?.length && !endpointChanged) payload.chart_keys = form.chartKeys
+  else if (derived) payload.chart_keys = [derived]
   return payload
 }
-
 /* ------------------------------------------------------------ report data */
 
 export function normalizeReportData(raw) {
@@ -167,6 +199,14 @@ export function normalizeReportData(raw) {
     kpis: raw?.category_kpis || raw?.kpis || null,
     widgets,
     data: raw,
-    meta: { upstream: raw?.upstream || { ok: true }, asOf: raw?.as_of || null },
+    meta: { upstream: normalizeUpstream(raw?.upstream), asOf: raw?.as_of || null },
   }
+}
+
+/** Accepts `{ ok, error }` or the backend's `{ upstream_ok, errors[] }`. */
+export function normalizeUpstream(u) {
+  if (!u) return { ok: true }
+  const ok = u.ok ?? u.upstream_ok ?? true
+  const error = u.error || (Array.isArray(u.errors) && u.errors.length ? u.errors.join('; ') : '')
+  return { ...u, ok: !!ok, error }
 }

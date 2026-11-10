@@ -7,8 +7,8 @@ import { showToast } from '../composables/useToast'
 
 const props = defineProps({ level: { type: String, default: 'zone' } })
 
-/* Sample geographies. Rows that exist in charts_sample.json use its numbers;
-   the rest are illustrative so the map has enough tiles to be meaningful.
+/* Placeholder geographies for the map-settings preview tiles (not report data).
+   TODO: load real zone / woreda aggregates from the API.
    Columns: code, name, parent region, farmers, area sown (ha), livestock keepers */
 const GEO = {
   zone: [

@@ -175,6 +175,7 @@ async function reset(c) {
             <div class="row row-wrap">
               <span v-if="c.cat" class="tag">{{ c.cat.label }}</span>
               <span v-if="c.is_system" class="badge badge-blue">System</span>
+              <span v-if="c.is_system && c.is_customized" class="badge badge-green">Customised</span>
               <span v-if="c.is_active === false" class="badge badge-orange">Hidden</span>
             </div>
             <h3 class="i-title">{{ c.title }}</h3>
