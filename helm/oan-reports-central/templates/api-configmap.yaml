@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "oan.fullname" . }}-api
+  labels:
+    {{- include "oan.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.api.env }}
+  {{ $k }}: {{ $v | toString | quote }}
+  {{- end }}
+  SEED_ON_STARTUP: {{ (not .Values.seedJob.enabled) | toString | quote }}
+  UPSTREAM_A2C_BASE_URL: {{ .Values.api.upstreams.a2c | quote }}
+  UPSTREAM_GRIEVANCE_BASE_URL: {{ .Values.api.upstreams.grievance | quote }}
+  UPSTREAM_FARMER_BASE_URL: {{ .Values.api.upstreams.farmer | quote }}
+  UPSTREAM_LIVESTOCK_BASE_URL: {{ .Values.api.upstreams.livestock | quote }}
+  UPSTREAM_CROP_BASE_URL: {{ .Values.api.upstreams.crop | quote }}
+  UPSTREAM_GATEWAY_BASE_URL: {{ .Values.api.upstreams.gateway | quote }}

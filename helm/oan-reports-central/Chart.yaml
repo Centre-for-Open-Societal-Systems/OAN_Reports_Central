@@ -1,0 +1,13 @@
+apiVersion: v2
+name: oan-reports-central
+description: OpenAgriNet Report Center — FastAPI reports API, Vue SPA and PostgreSQL
+type: application
+version: 0.1.0
+appVersion: "0.0.1"
+keywords:
+  - openagrinet
+  - reports
+# CI (Jenkinsfile) adds the oan.org/* release annotations to the packaged copy
+# (oan-helm scripts/ci/package_chart.py); they feed oan-helm's changelog and rollback history.
+annotations:
+  oan.org/component: reports
