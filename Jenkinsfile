@@ -9,7 +9,7 @@
 // 0.0.0-develop.<commit count> (oan-helm scripts/ci/derive-version.sh), published to repository/develop/.
 //
 // Jenkins credentials:
-//   aws-ecr-creds                  AWS keys with ECR push to oan/oan_reports_central/* (shared with farmer-registry)
+//   aws-ecr-creds                  AWS keys with ECR create-repository and push on oan/oan_reports_central/* (shared with farmer-registry)
 //   reports-dev-kubeconfig         Secret file: kubeconfig of the namespace reports deployer on New Dev
 //   oan-helm-fork-token            Username + token with push access to oan-helm (shared with farmer-registry)
 pipeline {
@@ -92,6 +92,10 @@ pipeline {
                           component=${pair%%:*}
                           image=${pair#*:}
                           repository="$ECR_REPOSITORY/$image"
+                          # ECR does not create repositories on push: the first build of an image creates its own.
+                          aws ecr describe-repositories --region "$AWS_REGION" --repository-names "$repository" > /dev/null 2>&1 ||
+                            aws ecr create-repository --region "$AWS_REGION" --repository-name "$repository" \
+                              --image-scanning-configuration scanOnPush=true > /dev/null
                           docker tag "coss-ci/$image:$IMAGE_TAG" "$ECR_REGISTRY/$repository:$IMAGE_TAG"
                           docker push "$ECR_REGISTRY/$repository:$IMAGE_TAG"
                           digest=$(aws ecr describe-images --region "$AWS_REGION" --repository-name "$repository" \

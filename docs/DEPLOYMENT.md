@@ -312,7 +312,7 @@ Dev runs exactly the archive published to oan-helm. `values-dev.yaml` sets no im
 
 | ID | Kind | Notes |
 |----|------|-------|
-| `aws-ecr-creds` | AWS credentials | existing (farmer-registry); needs push to `oan/reports-central/*` |
+| `aws-ecr-creds` | AWS credentials | existing (farmer-registry); needs `ecr:DescribeRepositories`, `ecr:CreateRepository` and push on `oan/oan_reports_central/*` (the Jenkinsfile creates the repositories on first push) |
 | `oan-helm-fork-token` | Username + password | existing (farmer-registry); push access to oan-helm |
 | `reports-dev-kubeconfig` | Secret file | new; namespace-scoped deployer of namespace `reports` on New Dev (`oan-reports-dev-kubeconfig` was the old k3s host's) |
 
