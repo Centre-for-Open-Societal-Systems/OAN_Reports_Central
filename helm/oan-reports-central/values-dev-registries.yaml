@@ -1,0 +1,50 @@
+# Dev on the registries cluster (New Dev, 13.201.58.55: farmer, crop, livestock, DA and the
+# commons Keycloak), replacing the standalone k3s host of values-dev.yaml once cut over.
+# Routed by Istio on the shared istio-system/development Gateway, which holds the TLS certificate.
+# Image tags (commit@digest) come from the packaged values.yaml, as with values-dev.yaml.
+#   helm upgrade --install oan-reports-central oan-reports-central-<version>.tgz -n reports -f values-dev-registries.yaml
+
+ecr:
+  enabled: true
+  registry: 379220350808.dkr.ecr.ap-south-1.amazonaws.com
+  region: ap-south-1
+  # empty: the node's IAM role, as the registry charts' ecrPullSecret uses
+
+api:
+  image:
+    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan_reports_central/oan-report-central-api
+  env:
+    APP_ENV: development
+  upstreams:
+    # Registry dashboard-apis, in-cluster (Service port 80; the client appends /api/v1/charts/<key>).
+    farmer: http://farmer-registry-dashboard-api.farmer.svc.cluster.local
+    livestock: http://livestock-registry-dashboard-api.livestock.svc.cluster.local
+    crop: http://cropsown-registry-dashboard-api.crop.svc.cluster.local
+    # On the a2c/grievance instance: public hostnames.
+    a2c: ""
+    grievance: ""
+    gateway: ""
+  upstreamAuth:
+    # Staff realm, the issuer the dashboard-apis trust (oan-helm environments/dev/values/*.yaml).
+    # Left off until the Keycloak client and its Secret exist: set tokenUrl, clientId and existingSecret together.
+    #   tokenUrl: https://keycloak.development.oanstaging.com/realms/staff/protocol/openid-connect/token
+    tokenUrl: ""
+    clientId: ""
+    existingSecret: ""
+
+web:
+  image:
+    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan_reports_central/oan-report-central-ui
+
+ingress:
+  enabled: false
+
+virtualService:
+  enabled: true
+  host: oan-reports.development.oanstaging.com   # Route 53 A record -> 13.201.58.55 at cutover
+  gateway: istio-system/development
+
+postgresql:
+  persistence:
+    size: 10Gi
+    storageClass: ""   # cluster default

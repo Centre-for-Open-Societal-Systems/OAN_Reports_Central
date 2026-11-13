@@ -298,10 +298,10 @@ kubectl -n oan-dev get certificate oan-reports-tls               # READY True wi
 
 | Stage | Runs on | What it does |
 |-------|---------|--------------|
-| Build | every branch and PR | `docker build` of `backend` (api) and `frontend` (web), tagged with the first 12 characters of the commit |
-| Push to ECR | `developer` | pushes `oan-reports-central/api` and `/web`, records each `tag@digest` |
+| Build | every branch and PR | `docker build` of `backend` (api) and `frontend` (web), images `oan/oan_reports_central/oan-report-central-api` and `…/oan-report-central-ui` (the registries' `oan/<repository>/<image>` naming), tagged `<Chart.yaml appVersion>.develop.<build number>`, e.g. `0.0.0.develop.42` |
+| Push to ECR | `developer` | pushes both to ECR, records each `tag@digest` |
 | Package chart | `developer`, agent `oan-ci-deploy` | oan-helm `scripts/ci/package_chart.py`: copies `helm/oan-reports-central`, writes the images into its `values.yaml`, adds the `oan.org/*` annotations, version `0.0.0-develop.<commit count>` |
-| Deploy to dev | `developer`, agent `oan-ci-deploy` | `helm upgrade --install oan <archive> -n oan-dev -f values-dev.yaml --atomic --wait`, then `GET /api/health` on the dev URL |
+| Deploy to dev | `developer`, agent `oan-ci-deploy` | `helm upgrade --install oan-reports-central <archive> -n reports -f values-dev-registries.yaml --atomic --wait` on New Dev (the registries cluster, Istio `VirtualService` on `istio-system/development`), then `GET /api/health` against New Dev's IP |
 | Publish chart to oan-helm | `developer`, after a good deploy | oan-helm `scripts/ci/publish_chart.py` adds the same archive to `repository/develop/`; oan-helm's workflow updates the index, CHANGELOG and rollback history. A failure here marks the build UNSTABLE only |
 
 Dev runs exactly the archive published to oan-helm. `values-dev.yaml` sets no image tags, the packaged chart carries them.
@@ -312,9 +312,9 @@ Dev runs exactly the archive published to oan-helm. `values-dev.yaml` sets no im
 
 | ID | Kind | Notes |
 |----|------|-------|
-| `aws-ecr-creds` | AWS credentials | existing (farmer-registry); needs push to `oan-reports-central/*` |
+| `aws-ecr-creds` | AWS credentials | existing (farmer-registry); needs push to `oan/reports-central/*` |
 | `oan-helm-fork-token` | Username + password | existing (farmer-registry); push access to oan-helm |
-| `oan-reports-dev-kubeconfig` | Secret file | new; namespace-scoped `jenkins-deployer` ServiceAccount (`infra/k8s/jenkins/`) |
+| `reports-dev-kubeconfig` | Secret file | new; namespace-scoped deployer of namespace `reports` on New Dev (`oan-reports-dev-kubeconfig` was the old k3s host's) |
 
 Create the kubeconfig once (re-run to rotate):
 

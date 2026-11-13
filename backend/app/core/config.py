@@ -27,9 +27,20 @@ class Settings(BaseSettings):
     upstream_timeout_seconds: float = 20.0
     seed_on_startup: bool = True
 
+    # Keycloak client-credentials token sent to the upstreams in UPSTREAM_AUTH_SERVICES (the registry
+    # dashboard-apis). Leave OIDC_TOKEN_URL blank to call every upstream without a token.
+    oidc_token_url: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    upstream_auth_services: str = "farmer,livestock,crop"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def upstream_auth_service_list(self) -> list[str]:
+        return [s.strip() for s in self.upstream_auth_services.split(",") if s.strip()]
 
 
 @lru_cache

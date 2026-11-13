@@ -46,6 +46,15 @@ spec:
                 name: {{ include "oan.fullname" . }}-api
           env:
             {{- include "oan.databaseEnv" . | nindent 12 }}
+            {{- with .Values.api.upstreamAuth }}
+            {{- if .tokenUrl }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "api.upstreamAuth.existingSecret is required with api.upstreamAuth.tokenUrl" .existingSecret }}
+                  key: {{ .secretKey }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

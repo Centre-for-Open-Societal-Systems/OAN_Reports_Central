@@ -64,6 +64,11 @@ kubectl get nodes        # k3s + helm are installed on first boot (~2 min)
 
 k3s ships Traefik, so use `ingress.className: traefik` there.
 
+On an Istio cluster (the OpenG2P registries cluster) set `ingress.enabled: false` and
+`virtualService.enabled: true` with `virtualService.host` and `virtualService.gateway`
+(e.g. `istio-system/development`): the chart then routes `/api` to the API and `/` to the
+web through that Gateway, which holds the TLS certificate. See `values-dev-registries.yaml`.
+
 ## 3. Install
 
 ```yaml

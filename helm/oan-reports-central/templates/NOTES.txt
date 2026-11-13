@@ -5,6 +5,10 @@ OAN Reports Central is deploying as release "{{ .Release.Name }}".
 {{- $h := .Values.ingress.host | default "<node-public-ip>" }}
 Open: http{{ if .Values.ingress.tls }}s{{ end }}://{{ $h }}/
 API health: http{{ if .Values.ingress.tls }}s{{ end }}://{{ $h }}/api/health
+{{- else if .Values.virtualService.enabled }}
+
+Open: https://{{ .Values.virtualService.host }}/
+API health: https://{{ .Values.virtualService.host }}/api/health
 {{- else }}
 
 No ingress enabled. Reach the app with a port-forward:

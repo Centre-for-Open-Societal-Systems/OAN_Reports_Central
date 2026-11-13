@@ -25,7 +25,7 @@ ecr:
 
 api:
   image:
-    repository: oan-reports-central-api
+    repository: oan/oan_reports_central/oan-report-central-api
     tag: ""            # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
   replicaCount: 1
@@ -46,6 +46,17 @@ api:
     livestock: ""
     crop: ""
     gateway: ""
+
+  # Keycloak client-credentials token for the upstreams in `services` (the registry dashboard-apis
+  # check its audience and charts:read role). Empty tokenUrl: no token is sent.
+  upstreamAuth:
+    # e.g. https://keycloak.<domain>/realms/<realm>/protocol/openid-connect/token
+    tokenUrl: ""
+    clientId: ""
+    # Existing Secret holding the client secret (key secretKey).
+    existingSecret: ""
+    secretKey: client-secret
+    services: farmer,livestock,crop
 
   # Extra env vars (list of EnvVar objects)
   extraEnv: []
@@ -79,7 +90,7 @@ seedJob:
 
 web:
   image:
-    repository: oan-reports-central-web
+    repository: oan/oan_reports_central/oan-report-central-ui
     tag: ""
     pullPolicy: IfNotPresent
   replicaCount: 1
@@ -115,6 +126,13 @@ ingress:
   #  - secretName: reports-tls
   #    hosts:
   #      - reports.example.org
+
+# Istio VirtualService instead of an Ingress, for clusters that route through an
+# existing Istio Gateway (the OpenG2P registries cluster). TLS is the Gateway's.
+virtualService:
+  enabled: false
+  host: ""        # e.g. oan-reports.development.oanstaging.com
+  gateway: ""     # <namespace>/<name>, e.g. istio-system/development
 
 # Database: either the bundled single-node PostgreSQL (dev/staging),
 # or an external/managed database (recommended for production).

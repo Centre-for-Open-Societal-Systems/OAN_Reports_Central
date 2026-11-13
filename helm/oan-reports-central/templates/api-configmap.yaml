@@ -15,3 +15,6 @@ data:
   UPSTREAM_LIVESTOCK_BASE_URL: {{ .Values.api.upstreams.livestock | quote }}
   UPSTREAM_CROP_BASE_URL: {{ .Values.api.upstreams.crop | quote }}
   UPSTREAM_GATEWAY_BASE_URL: {{ .Values.api.upstreams.gateway | quote }}
+  OIDC_TOKEN_URL: {{ .Values.api.upstreamAuth.tokenUrl | quote }}
+  OIDC_CLIENT_ID: {{ .Values.api.upstreamAuth.clientId | quote }}
+  UPSTREAM_AUTH_SERVICES: {{ .Values.api.upstreamAuth.services | quote }}

@@ -3,7 +3,7 @@ name: oan-reports-central
 description: OpenAgriNet Report Center — FastAPI reports API, Vue SPA and PostgreSQL
 type: application
 version: 0.1.0
-appVersion: "0.0.1"
+appVersion: "0.0.0"
 keywords:
   - openagrinet
   - reports

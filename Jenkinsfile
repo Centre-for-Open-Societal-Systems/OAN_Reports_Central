@@ -1,13 +1,16 @@
-// OAN Reports Central: build the api and web images, push them to ECR, package the Helm chart with
-// those images, deploy it to the dev k3s host (infra/terraform/dev) and publish the same archive to oan-helm.
+// OAN Reports Central: build the api and ui images, push them to ECR, package the Helm chart with
+// those images, deploy it to New Dev (the registries cluster, namespace reports) and publish the same archive
+// to oan-helm.
 //
 // Multibranch job. Every branch and pull request builds the images and lints the chart; only the
-// developer branch pushes, deploys and publishes. The chart and images of a commit share one version,
+// developer branch pushes, deploys and publishes. Images follow the registries' oan/<repository>/<image> naming,
+// oan/oan_reports_central/oan-report-central-{api,ui}, tagged <Chart.yaml appVersion>.develop.<build number>
+// (e.g. 0.0.0.develop.42). The chart of that commit is
 // 0.0.0-develop.<commit count> (oan-helm scripts/ci/derive-version.sh), published to repository/develop/.
 //
 // Jenkins credentials:
-//   aws-ecr-creds                  AWS keys with ECR push to oan-reports-central/* (shared with farmer-registry)
-//   oan-reports-dev-kubeconfig     Secret file: kubeconfig of the oan-dev deployer on the dev k3s host (private IP)
+//   aws-ecr-creds                  AWS keys with ECR push to oan/oan_reports_central/* (shared with farmer-registry)
+//   reports-dev-kubeconfig         Secret file: kubeconfig of the namespace reports deployer on New Dev
 //   oan-helm-fork-token            Username + token with push access to oan-helm (shared with farmer-registry)
 pipeline {
     agent any
@@ -21,13 +24,15 @@ pipeline {
     }
     environment {
         AWS_REGION = 'ap-south-1'
-        ECR_REPOSITORY = 'oan-reports-central'
+        ECR_REPOSITORY = 'oan/oan_reports_central'
         CHART = 'oan-reports-central'
-        HELM_RELEASE = 'oan'
-        HELM_NAMESPACE = 'oan-dev'
-        VALUES_OVERLAY = 'helm/oan-reports-central/values-dev.yaml'
-        DEV_URL = 'https://oan-reports.development.oanstaging.com'
-        KUBECONFIG_CREDENTIAL = 'oan-reports-dev-kubeconfig'
+        HELM_RELEASE = 'oan-reports-central'
+        HELM_NAMESPACE = 'reports'
+        VALUES_OVERLAY = 'helm/oan-reports-central/values-dev-registries.yaml'
+        DEV_HOST = 'oan-reports.development.oanstaging.com'
+        // New Dev's public IP: the health check reaches the new release whatever DNS still points at.
+        DEV_IP = '13.201.58.55'
+        KUBECONFIG_CREDENTIAL = 'reports-dev-kubeconfig'
         OAN_HELM_FORK_CRED_ID = 'oan-helm-fork-token'
         OAN_HELM = 'https://github.com/Centre-for-Open-Societal-Systems/oan-helm.git'
     }
@@ -41,13 +46,20 @@ pipeline {
                     if (!(commit ==~ /[0-9a-f]{40}/)) {
                         error('Could not resolve the checked-out Git commit')
                     }
-                    env.IMAGE_TAG = commit.take(12)
                     env.SOURCE_COMMIT = commit
+                    def appVersion = sh(returnStdout: true,
+                                        script: 'sed -n "s/^appVersion: *//p" "helm/$CHART/Chart.yaml" | tr -d \'"\'').trim()
+                    if (!(appVersion ==~ /\d+\.\d+\.\d+/)) {
+                        error("helm/${env.CHART}/Chart.yaml appVersion '${appVersion}' is not N.N.N")
+                    }
+                    // The developer branch is this repository's develop line, so the tag says develop.
+                    env.IMAGE_TAG = "${appVersion}.develop.${env.BUILD_NUMBER}"
+                    currentBuild.description = "images ${env.IMAGE_TAG}"
                 }
                 sh '''
                     set -eu
-                    docker build -t "coss-ci/oan-reports-central-api:$IMAGE_TAG" backend
-                    docker build -t "coss-ci/oan-reports-central-web:$IMAGE_TAG" frontend
+                    docker build -t "coss-ci/oan-report-central-api:$IMAGE_TAG" backend
+                    docker build -t "coss-ci/oan-report-central-ui:$IMAGE_TAG" frontend
                 '''
             }
         }
@@ -75,9 +87,12 @@ pipeline {
                         mkdir -p build-outcomes
                         # One line per image for oan-helm package_chart.py: values path, repository, tag@digest.
                         : > build-outcomes/images.tsv
-                        for component in api web; do
-                          repository="$ECR_REPOSITORY/$component"
-                          docker tag "coss-ci/oan-reports-central-$component:$IMAGE_TAG" "$ECR_REGISTRY/$repository:$IMAGE_TAG"
+                        # Chart component (values path) and image: the web component serves the ui image.
+                        for pair in api:oan-report-central-api web:oan-report-central-ui; do
+                          component=${pair%%:*}
+                          image=${pair#*:}
+                          repository="$ECR_REPOSITORY/$image"
+                          docker tag "coss-ci/$image:$IMAGE_TAG" "$ECR_REGISTRY/$repository:$IMAGE_TAG"
                           docker push "$ECR_REGISTRY/$repository:$IMAGE_TAG"
                           digest=$(aws ecr describe-images --region "$AWS_REGION" --repository-name "$repository" \
                             --image-ids "imageTag=$IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text)
@@ -92,8 +107,7 @@ pipeline {
             }
         }
         stage('Release') {
-            // The deploy agent is in oan-vpc next to the dev host and reaches its Kubernetes API over the
-            // private IP (security group rule k8s_api_ci in infra/terraform/dev/network.tf).
+            // The deploy agent is in the VPC of New Dev and reaches its Kubernetes API.
             when {
                 beforeAgent true
                 allOf { branch 'developer'; not { changeRequest() } }
@@ -144,10 +158,10 @@ pipeline {
                         sh '''
                             set -eu
                             for attempt in 1 2 3 4 5 6; do
-                              if curl -fsS -m 10 "$DEV_URL/api/health"; then echo; exit 0; fi
+                              if curl -fsS -m 10 --resolve "$DEV_HOST:443:$DEV_IP" "https://$DEV_HOST/api/health"; then echo; exit 0; fi
                               sleep 10
                             done
-                            echo "$DEV_URL/api/health did not answer after the deploy" >&2
+                            echo "https://$DEV_HOST/api/health on $DEV_IP did not answer after the deploy" >&2
                             exit 1
                         '''
                     }

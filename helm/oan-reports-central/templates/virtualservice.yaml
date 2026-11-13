@@ -1,0 +1,31 @@
+{{- if .Values.virtualService.enabled }}
+{{- if .Values.ingress.enabled }}
+{{- fail "enable either ingress or virtualService, not both" }}
+{{- end }}
+# Istio route on an existing Gateway (OpenG2P clusters); the Gateway terminates TLS.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "oan.fullname" . }}
+  labels:
+    {{- include "oan.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ required "virtualService.host is required" .Values.virtualService.host | quote }}
+  gateways:
+    - {{ required "virtualService.gateway is required" .Values.virtualService.gateway | quote }}
+  http:
+    - match:
+        - uri:
+            prefix: /api
+      route:
+        - destination:
+            host: {{ include "oan.fullname" . }}-api
+            port:
+              number: {{ .Values.api.port }}
+    - route:
+        - destination:
+            host: {{ include "oan.fullname" . }}-web
+            port:
+              number: 80
+{{- end }}

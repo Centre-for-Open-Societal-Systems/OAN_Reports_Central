@@ -12,7 +12,7 @@ ecr:
 
 api:
   image:
-    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan-reports-central/api
+    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan_reports_central/oan-report-central-api
   env:
     APP_ENV: development
   upstreams:
@@ -25,7 +25,7 @@ api:
 
 web:
   image:
-    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan-reports-central/web
+    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan_reports_central/oan-report-central-ui
 
 ingress:
   enabled: true
