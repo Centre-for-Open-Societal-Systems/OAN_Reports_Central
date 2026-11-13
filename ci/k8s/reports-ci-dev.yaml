@@ -1,0 +1,71 @@
+# The reports namespace on New Dev (RKE2 at https://10.0.1.58:6443, the registries cluster) and the
+# reports-ci service account the Jenkinsfile's Deploy stage deploys with.
+#
+# Apply ONCE, as a cluster admin (e.g. the kubectl shell in Rancher):
+#
+#   kubectl apply -f ci/k8s/reports-ci-dev.yaml
+#
+# then build the reports-dev-kubeconfig Jenkins credential with ci/k8s/make-reports-ci-kubeconfig.sh.
+#
+# reports-ci gets the built-in `admin` role in reports and nothing wider, plus the Istio routing the
+# chart creates (VirtualService), which `admin` does not cover. It cannot create namespaces, which is
+# why reports is declared here.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reports
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: reports-ci
+  namespace: reports
+---
+# A long-lived token for the kubeconfig (Kubernetes no longer creates one).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: reports-ci-token
+  namespace: reports
+  annotations:
+    kubernetes.io/service-account.name: reports-ci
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: reports-ci-admin
+  namespace: reports
+subjects:
+  - kind: ServiceAccount
+    name: reports-ci
+    namespace: reports
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ci-deploy-istio
+  namespace: reports
+rules:
+  - apiGroups: ["networking.istio.io", "security.istio.io"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: reports-ci-istio
+  namespace: reports
+subjects:
+  - kind: ServiceAccount
+    name: reports-ci
+    namespace: reports
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ci-deploy-istio

@@ -1,0 +1,51 @@
+{{- if .Values.seedJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "oan.fullname" . }}-seed
+  labels:
+    {{- include "oan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seed
+  annotations:
+    # post-* so the bundled PostgreSQL exists before the job runs
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.seedJob.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.seedJob.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "oan.selectorLabels" (dict "ctx" . "component" "seed") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "oan.imagePullSecrets" . | nindent 6 }}
+      initContainers:
+        {{- include "oan.waitForDb" . | nindent 8 }}
+      containers:
+        - name: seed
+          image: {{ include "oan.apiImage" . }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "oan.fullname" . }}-api
+          env:
+            {{- include "oan.databaseEnv" . | nindent 12 }}
+          command:
+            - python
+            - -c
+            - |
+              from app.core.db import Base, SessionLocal, engine
+              from app.services.reports import seed_database
+              Base.metadata.create_all(bind=engine)
+              db = SessionLocal()
+              try:
+                  print("seed result:", seed_database(db))
+              finally:
+                  db.close()
+          {{- with .Values.seedJob.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

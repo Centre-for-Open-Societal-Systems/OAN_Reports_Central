@@ -1,0 +1,30 @@
+OAN Reports Central is deploying as release "{{ .Release.Name }}".
+
+{{- if .Values.ingress.enabled }}
+
+{{- $h := .Values.ingress.host | default "<node-public-ip>" }}
+Open: http{{ if .Values.ingress.tls }}s{{ end }}://{{ $h }}/
+API health: http{{ if .Values.ingress.tls }}s{{ end }}://{{ $h }}/api/health
+{{- else if .Values.virtualService.enabled }}
+
+Open: https://{{ .Values.virtualService.host }}/
+API health: https://{{ .Values.virtualService.host }}/api/health
+{{- else }}
+
+No ingress enabled. Reach the app with a port-forward:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "oan.fullname" . }}-web 8080:80
+
+then open http://127.0.0.1:8080/  (API at http://127.0.0.1:8080/api/health)
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+
+Using the bundled single-node PostgreSQL — fine for dev/staging.
+For production set postgresql.enabled=false and externalDatabase.*.
+{{- end }}
+{{- $u := .Values.api.upstreams }}
+{{- if not (or $u.a2c $u.grievance $u.farmer $u.livestock $u.crop $u.gateway) }}
+
+No upstream chart services configured (api.upstreams.*): reports will show
+empty states until they are set.
+{{- end }}

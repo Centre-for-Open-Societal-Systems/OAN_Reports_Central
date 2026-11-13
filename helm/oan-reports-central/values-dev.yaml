@@ -1,0 +1,45 @@
+# Dev: single-node k3s on EC2 (infra/terraform/dev), images from ECR,
+# served at https://oan-reports.development.oanstaging.com (cert-manager + Let's Encrypt).
+# Overlay for the chart CI packages: the image tags (commit@digest) come from the packaged
+# values.yaml, so none are set here. Jenkinsfile deploys:
+#   helm upgrade --install oan oan-reports-central-<version>.tgz -n oan-dev -f values-dev.yaml
+
+ecr:
+  enabled: true
+  registry: 379220350808.dkr.ecr.ap-south-1.amazonaws.com
+  region: ap-south-1
+  # empty: credentials come from the EC2-ECR-Read-Role instance profile
+
+api:
+  image:
+    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan_reports_central/oan-report-central-api
+  env:
+    APP_ENV: development
+  upstreams:
+    a2c: ""
+    grievance: ""
+    farmer: ""
+    livestock: ""
+    crop: ""
+    gateway: ""
+
+web:
+  image:
+    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan_reports_central/oan-report-central-ui
+
+ingress:
+  enabled: true
+  className: traefik
+  host: oan-reports.development.oanstaging.com   # Route 53 A record -> k3s host
+  annotations:
+    # infra/k8s/cert-manager/cluster-issuers.yaml
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    - secretName: oan-reports-tls
+      hosts:
+        - oan-reports.development.oanstaging.com
+
+postgresql:
+  persistence:
+    size: 10Gi
+    storageClass: local-path

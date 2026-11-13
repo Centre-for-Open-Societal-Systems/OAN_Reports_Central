@@ -62,6 +62,7 @@ cd frontend; npm run dev
 | [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) | Architecture & data design |
 | [docs/BACKEND.md](docs/BACKEND.md) | API runbook |
 | [docs/FRONTEND.md](docs/FRONTEND.md) | SPA structure & local run |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker images, Helm chart, Terraform (ECR + EC2/k3s), dev deployment |
 
 ## API surface (summary)
 
